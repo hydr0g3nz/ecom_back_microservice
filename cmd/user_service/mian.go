@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -9,12 +10,15 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	fb_logger "github.com/gofiber/fiber/v2/middleware/logger"
+	"google.golang.org/grpc"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
 	// Update these imports to match your project structure
 	handler "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller"
+	grpcServer "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller/grpc"
+	pb "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller/grpc/proto"
 	repository "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/repository/gorm"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/entity"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/usecase"
@@ -33,23 +37,7 @@ func main() {
 	dbHost := getEnv("DB_HOST", "localhost")
 	dbPort := getEnv("DB_PORT", "3366")
 	dbName := getEnv("DB_NAME", "ecom_user_service")
-
-	// accessSecret := getEnv("JWT_ACCESS_SECRET", "access_secret_key")
-	// refreshSecret := getEnv("JWT_REFRESH_SECRET", "refresh_secret_key")
-
-	// accessTokenExpiryStr := getEnv("JWT_ACCESS_EXPIRY", "15m")
-	// refreshTokenExpiryStr := getEnv("JWT_REFRESH_EXPIRY", "7d")
-
-	// // Parse durations
-	// accessTokenExpiry, err := time.ParseDuration(accessTokenExpiryStr)
-	// if err != nil {
-	// 	log.Fatal("Invalid access token expiry", "error", err)
-	// }
-
-	// refreshTokenExpiry, err := time.ParseDuration(refreshTokenExpiryStr)
-	// if err != nil {
-	// 	log.Fatal("Invalid refresh token expiry", "error", err)
-	// }
+	grpcPort := getEnv("GRPC_PORT", "50051")
 
 	// Connect to database using GORM
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
@@ -87,15 +75,21 @@ func main() {
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
 
 	// Initialize dependencies
-	// v := validator.NewValidator()
-	// hashService := utils.NewBcryptService()
-	// tokenSvc := token.NewJWTService(accessSecret, refreshSecret, accessTokenExpiry, refreshTokenExpiry, log)
 	userRepo := repository.NewGormUserRepository(db)
 	userUsecase := usecase.NewUserUsecase(userRepo)
 	tokenRepo := repository.NewGormTokenRepository(db)
-	jwtSvc := jwt_service.NewJWTService(jwt_service.Config{SecretKey: "secret_key", Issuer: "user_service", AccessTokenDuration: 15 * time.Minute, RefreshTokenDuration: 7 * 24 * time.Hour})
+	jwtSvc := jwt_service.NewJWTService(jwt_service.Config{
+		SecretKey:            getEnv("JWT_SECRET_KEY", "secret_key"),
+		Issuer:               "user_service",
+		AccessTokenDuration:  15 * time.Minute,
+		RefreshTokenDuration: 7 * 24 * time.Hour,
+	})
 	tokenUsecase := usecase.NewTokenUsecase(tokenRepo, jwtSvc)
 	authUserUsecase := usecase.NewAuthUsecase(userUsecase, tokenUsecase)
+
+	// Start gRPC server in a goroutine
+	go startGRPCServer(grpcPort, authUserUsecase, userUsecase, log)
+
 	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
 		ReadTimeout:  15 * time.Second,
@@ -118,26 +112,14 @@ func main() {
 	})
 
 	// Add middlewares
-	// app.Use(recover.New())
 	app.Use(fb_logger.New())
 
 	// Initialize HTTP handler and middleware
 	userHandler := handler.NewUserHandler(authUserUsecase, userUsecase, log)
-	// authMiddleware := http.NewFiberAuthMiddleware(tokenSvc, log)
 
 	// Register routes
 	api := app.Group("/api")
 	userHandler.RegisterRoutes(api)
-
-	// Protected routes
-	// protected := app.Group("/api/protected")
-	// protected.Use(authMiddleware.Authenticate)
-
-	// Admin routes example
-	// admin := app.Group("/admin")
-	// admin.Use(authMiddleware.Authenticate)
-	// Example of role-based middleware
-	// admin.Use(authMiddleware.RequireRole("admin"))
 
 	// Start server in a goroutine
 	serverAddr := getEnv("SERVER_ADDR", "127.0.0.1:8080")
@@ -156,6 +138,22 @@ func main() {
 	log.Info("Shutting down server...")
 	if err := app.Shutdown(); err != nil {
 		log.Error("Error during server shutdown", "error", err)
+	}
+}
+
+func startGRPCServer(port string, authUsecase usecase.AuthUsecase, userUsecase usecase.UserUsecase, log applogger.Logger) {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	if err != nil {
+		log.Fatal("Failed to listen for gRPC", "error", err)
+	}
+
+	s := grpc.NewServer()
+	userServer := grpcServer.NewUserServer(authUsecase, userUsecase, log)
+	pb.RegisterUserServiceServer(s, userServer)
+
+	log.Info("Starting gRPC server", "port", port)
+	if err := s.Serve(lis); err != nil {
+		log.Fatal("Failed to serve gRPC", "error", err)
 	}
 }
 
