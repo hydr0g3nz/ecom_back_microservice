@@ -70,7 +70,7 @@ func main() {
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		Logger: gormLogger,
 	})
-	db.AutoMigrate(&entity.User{})
+	db.AutoMigrate(&entity.User{}, &entity.Token{})
 	if err != nil {
 		log.Fatal("Failed to connect to database", "error", err)
 	}

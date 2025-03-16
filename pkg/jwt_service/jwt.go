@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // Common errors
@@ -85,6 +86,7 @@ func (s *JWTService) generateToken(userID, username, role string, duration time.
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    s.config.Issuer,
 			Subject:   userID,
+			ID:        uuid.New().String(),
 		},
 		UserID:    userID,
 		Username:  username,

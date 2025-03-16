@@ -58,6 +58,7 @@ func (tu *tokenUsecase) GenerateTokenPair(ctx context.Context, userID, username,
 
 	// Store tokens in repository
 	accessTokenEntity := &entity.Token{
+		ID:        accessClaims.ID,
 		UserID:    userID,
 		Type:      entity.AccessToken,
 		Token:     accessToken,
@@ -65,6 +66,7 @@ func (tu *tokenUsecase) GenerateTokenPair(ctx context.Context, userID, username,
 	}
 
 	refreshTokenEntity := &entity.Token{
+		ID:        refreshClaims.ID,
 		UserID:    userID,
 		Type:      entity.RefreshToken,
 		Token:     refreshToken,

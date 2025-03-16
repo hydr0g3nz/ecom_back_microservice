@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 	responsener "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller/reponsener"
@@ -42,7 +41,6 @@ func (h *UserHandler) RegisterRoutes(r fiber.Router) {
 
 // CreateUser handles the creation of a new user
 func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
-	fmt.Println("create user")
 	var req dto.UserRequest
 	if err := c.BodyParser(&req); err != nil {
 		h.logger.Error("Failed to decode request body", "error", err)
