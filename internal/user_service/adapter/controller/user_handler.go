@@ -2,42 +2,47 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 	responsener "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller/reponsener"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/dto"
 	uc "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/usecase"
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/usecase/port"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/logger"
 )
 
 // UserHandler handles HTTP requests for the user service
 type UserHandler struct {
-	userService port.UserUsecase
+	authUsecase uc.AuthUsecase
+	userUsecase uc.UserUsecase
 	logger      logger.Logger
 }
 
 // NewUserHandler creates a new instance of UserHandler
-func NewUserHandler(userService port.UserUsecase, logger logger.Logger) *UserHandler {
+func NewUserHandler(authUsecase uc.AuthUsecase, userUsecase uc.UserUsecase, logger logger.Logger) *UserHandler {
 	return &UserHandler{
-		userService: userService,
+		authUsecase: authUsecase,
+		userUsecase: userUsecase,
 		logger:      logger,
 	}
 }
 
 // RegisterRoutes registers the routes for the user service
-func (h *UserHandler) RegisterRoutes(app *fiber.App) {
-	userGroup := app.Group("/users")
+func (h *UserHandler) RegisterRoutes(r fiber.Router) {
+	userGroup := r.Group("/users")
 
 	userGroup.Post("/", h.CreateUser)
 	userGroup.Get("/:id", h.GetUser)
 	userGroup.Put("/:id", h.UpdateUser)
 	userGroup.Delete("/:id", h.DeleteUser)
 
+	userGroup.Post("/login", h.Login)
+
 }
 
 // CreateUser handles the creation of a new user
 func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
+	fmt.Println("create user")
 	var req dto.UserRequest
 	if err := c.BodyParser(&req); err != nil {
 		h.logger.Error("Failed to decode request body", "error", err)
@@ -48,7 +53,8 @@ func (h *UserHandler) CreateUser(c *fiber.Ctx) error {
 	}
 
 	ctx := c.Context()
-	user, err := h.userService.CreateUser(ctx, req.ToEntity(), req.Password)
+	userEntity := req.ToEntity()
+	user, err := h.userUsecase.CreateUser(ctx, &userEntity, req.Password)
 	if err != nil {
 		return h.handleServiceError(c, err, "Failed to create user")
 	}
@@ -67,7 +73,7 @@ func (h *UserHandler) GetUser(c *fiber.Ctx) error {
 	}
 
 	ctx := c.Context()
-	user, err := h.userService.GetUserByID(ctx, id)
+	user, err := h.userUsecase.GetUserByID(ctx, id)
 	if err != nil {
 		return h.handleServiceError(c, err, "Failed to get user")
 	}
@@ -95,7 +101,7 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 	}
 
 	ctx := c.Context()
-	user, err := h.userService.UpdateUser(ctx, id, req.ToEntity())
+	user, err := h.userUsecase.UpdateUser(ctx, id, req.ToEntity())
 	if err != nil {
 		return h.handleServiceError(c, err, "Failed to update user")
 	}
@@ -114,12 +120,37 @@ func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
 	}
 
 	ctx := c.Context()
-	err := h.userService.DeleteUser(ctx, id)
+	err := h.userUsecase.DeleteUser(ctx, id)
 	if err != nil {
 		return h.handleServiceError(c, err, "Failed to delete user")
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
+}
+func (h *UserHandler) Login(c *fiber.Ctx) error {
+	var req dto.UserLoginRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error("Failed to decode request body", "error", err)
+		return c.Status(fiber.StatusBadRequest).JSON(responsener.ErrorResponse{
+			Code:    fiber.StatusBadRequest,
+			Message: "Invalid request format",
+		})
+	}
+
+	ctx := c.Context()
+	tokenPair, err := h.authUsecase.Login(ctx, req.Email, req.Password)
+	if err != nil {
+		return h.handleServiceError(c, err, "Failed to login")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(responsener.SuccessResponse{
+		Code:    fiber.StatusOK,
+		Message: "Login successful",
+		Data: responsener.LoginResponse{
+			AccessToken:  tokenPair.AccessToken,
+			RefreshToken: tokenPair.RefreshToken,
+		},
+	})
 }
 
 // handleServiceError handles errors from the service layer

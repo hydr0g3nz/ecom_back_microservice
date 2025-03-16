@@ -69,3 +69,11 @@ func (r *GormUserRepository) Update(ctx context.Context, user entity.User) (*ent
 func (r *GormUserRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&entity.User{}).Error
 }
+func (r *GormUserRepository) GetByToken(ctx context.Context, token string) (*entity.User, error) {
+	var user entity.User
+	err := r.db.WithContext(ctx).Where("token = ?", token).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}

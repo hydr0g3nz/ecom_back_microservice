@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/entity"
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/usecase/port"
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/repository"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/utils"
 )
 
@@ -17,8 +17,25 @@ var (
 	ErrInternalServerError = errors.New("internal server error")
 )
 
+type UserUsecase interface {
+	// CreateUser creates a new user
+	CreateUser(ctx context.Context, user *entity.User, password string) (*entity.User, error)
+
+	// GetUserByID retrieves a user by ID
+	GetUserByID(ctx context.Context, id string) (*entity.User, error)
+
+	// GetUserByEmail retrieves a user by email
+	GetUserByEmail(ctx context.Context, email string) (*entity.User, error)
+
+	// UpdateUser updates an existing user
+	UpdateUser(ctx context.Context, id string, user entity.User) (*entity.User, error)
+
+	// DeleteUser deletes a user by ID
+	DeleteUser(ctx context.Context, id string) error
+}
+
 // NewUserUsecase returns a new instance of the user usecase
-func NewUserUsecase(ur port.UserRepository) port.UserUsecase {
+func NewUserUsecase(ur repository.UserRepository) UserUsecase {
 	return &userUsecase{
 		userRepo: ur,
 	}
@@ -26,18 +43,18 @@ func NewUserUsecase(ur port.UserRepository) port.UserUsecase {
 
 // userUsecase implements the UserUsecase interface
 type userUsecase struct {
-	userRepo port.UserRepository
+	userRepo repository.UserRepository
 }
 
 // CreateUser creates a new user
-func (uu *userUsecase) CreateUser(ctx context.Context, user entity.User, password string) (*entity.User, error) {
+func (uu *userUsecase) CreateUser(ctx context.Context, user *entity.User, password string) (*entity.User, error) {
 	hashedPassword, err := utils.HashPassword(password)
 	if err != nil {
 		return nil, err
 	}
 
 	user.HashedPassword = string(hashedPassword)
-	return uu.userRepo.Create(ctx, user)
+	return uu.userRepo.Create(ctx, *user)
 }
 
 // GetUserByID retrieves a user by ID
