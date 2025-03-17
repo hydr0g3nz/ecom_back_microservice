@@ -20,7 +20,7 @@ import (
 	grpcServer "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller/grpc"
 	pb "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller/grpc/proto"
 	repository "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/repository/gorm"
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/entity"
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/repository/gorm/model"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/usecase"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/jwt_service"
 	applogger "github.com/hydr0g3nz/ecom_back_microservice/pkg/logger"
@@ -58,7 +58,7 @@ func main() {
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		Logger: gormLogger,
 	})
-	db.AutoMigrate(&entity.User{}, &entity.Token{})
+	db.AutoMigrate(&model.Token{}, &model.User{})
 	if err != nil {
 		log.Fatal("Failed to connect to database", "error", err)
 	}

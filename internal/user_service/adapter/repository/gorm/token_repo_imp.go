@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/repository/gorm/model"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/entity"
 )
 
@@ -21,7 +22,7 @@ func NewGormTokenRepository(db *gorm.DB) *GormTokenRepository {
 
 // FindByUserID retrieves a list of tokens by user ID
 func (r *GormTokenRepository) FindByUserID(ctx context.Context, userID string) ([]*entity.Token, error) {
-	var tokens []*entity.Token
+	var tokens []*model.Token
 	err := r.db.WithContext(ctx).
 		Where("user_id = ?", userID).
 		Find(&tokens).Error
@@ -31,12 +32,16 @@ func (r *GormTokenRepository) FindByUserID(ctx context.Context, userID string) (
 		}
 		return nil, err
 	}
-	return tokens, nil
+	tokensEntities := make([]*entity.Token, len(tokens))
+	for i, t := range tokens {
+		tokensEntities[i] = t.ToEntity()
+	}
+	return tokensEntities, nil
 }
 
 // FindByValue retrieves a token by value
 func (r *GormTokenRepository) FindByValue(ctx context.Context, value string) (*entity.Token, error) {
-	var token entity.Token
+	var token model.Token
 	err := r.db.WithContext(ctx).
 		Where("token_str = ?", value).
 		First(&token).Error
@@ -46,29 +51,33 @@ func (r *GormTokenRepository) FindByValue(ctx context.Context, value string) (*e
 		}
 		return nil, err
 	}
-	return &token, nil
+	return token.ToEntity(), nil
 }
 
 // Save saves a new token
 func (r *GormTokenRepository) Save(ctx context.Context, token *entity.Token) error {
-	return r.db.WithContext(ctx).Create(token).Error
+	return r.db.WithContext(ctx).Create(model.NewTokenModel(token)).Error
 }
 
 // Delete removes a token by ID
 func (r *GormTokenRepository) Delete(ctx context.Context, tokenID string) error {
-	return r.db.WithContext(ctx).Where("id = ?", tokenID).Delete(&entity.Token{}).Error
+	return r.db.WithContext(ctx).Where("id = ?", tokenID).Delete(&model.Token{}).Error
 }
+
 func (r *GormTokenRepository) DeleteByUserID(ctx context.Context, userID string) error {
-	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&entity.Token{}).Error
+	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&model.Token{}).Error
 }
+
 func (r *GormTokenRepository) Update(ctx context.Context, by, token entity.Token) error {
-	return r.db.WithContext(ctx).Where("id = ", by.ID).Updates(token).Error
+	return r.db.WithContext(ctx).Where("id = ?", by.ID).Updates(model.NewTokenModel(&token)).Error
 }
+
 func (r *GormTokenRepository) Create(ctx context.Context, token *entity.Token) error {
-	return r.db.WithContext(ctx).Create(token).Error
+	return r.db.WithContext(ctx).Create(model.NewTokenModel(token)).Error
 }
+
 func (r *GormTokenRepository) GetByToken(ctx context.Context, tokenStr string) (*entity.Token, error) {
-	var token entity.Token
+	var token model.Token
 	err := r.db.WithContext(ctx).Where("token_str = ?", tokenStr).First(&token).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -76,5 +85,5 @@ func (r *GormTokenRepository) GetByToken(ctx context.Context, tokenStr string) (
 		}
 		return nil, err
 	}
-	return &token, nil
+	return token.ToEntity(), nil
 }

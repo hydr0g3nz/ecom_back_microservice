@@ -8,6 +8,7 @@ import (
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/entity"
 	vo "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/valueobject"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/utils"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -113,9 +114,6 @@ func (au *authUsecase) RefreshToken(ctx context.Context, tokenStr string) (*enti
 // verifyPassword checks if the provided password matches the stored hash
 // This is a placeholder - in a real implementation, you would use a proper password verification method
 func verifyPassword(hashedPassword, plainPassword string) bool {
-	// This should use a secure password hashing library like bcrypt
-	// For example: return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword)) == nil
-
-	// Placeholder implementation
-	return true
+	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
+	return err == nil
 }

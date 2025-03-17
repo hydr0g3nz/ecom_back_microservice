@@ -2,7 +2,7 @@
 
 # Build the application
 build:
-	go build -o bin/user_service cmd/user_service/mian.go
+	go build -o bin/user_service cmd/user_service/main.go
 
 # Run tests
 test:
@@ -10,7 +10,7 @@ test:
 
 # Run the application
 run:
-	go run cmd/user_service/mian.go
+	go run cmd/user_service/main.go
 
 # Generate gRPC code from protobuf
 proto-gen:
