@@ -37,15 +37,14 @@ const (
 type CustomClaims struct {
 	jwt.RegisteredClaims
 	UserID    string    `json:"user_id"`
-	Username  string    `json:"username"`
 	Role      string    `json:"role"`
 	TokenType TokenType `json:"token_type"`
 }
 
 // TokenService defines the JWT service interface
 type TokenService interface {
-	GenerateAccessToken(userID, username, role string) (string, error)
-	GenerateRefreshToken(userID, username, role string) (string, error)
+	GenerateAccessToken(userID, role string) (string, error)
+	GenerateRefreshToken(userID, role string) (string, error)
 	ValidateToken(tokenString string) (*CustomClaims, error)
 	GetTokenFromBearerString(bearerToken string) string
 }
@@ -63,17 +62,17 @@ func NewJWTService(config Config) TokenService {
 }
 
 // GenerateAccessToken generates a new access token
-func (s *JWTService) GenerateAccessToken(userID, username, role string) (string, error) {
-	return s.generateToken(userID, username, role, s.config.AccessTokenDuration, AccessToken)
+func (s *JWTService) GenerateAccessToken(userID, role string) (string, error) {
+	return s.generateToken(userID, role, s.config.AccessTokenDuration, AccessToken)
 }
 
 // GenerateRefreshToken generates a new refresh token
-func (s *JWTService) GenerateRefreshToken(userID, username, role string) (string, error) {
-	return s.generateToken(userID, username, role, s.config.RefreshTokenDuration, RefreshToken)
+func (s *JWTService) GenerateRefreshToken(userID, role string) (string, error) {
+	return s.generateToken(userID, role, s.config.RefreshTokenDuration, RefreshToken)
 }
 
 // generateToken creates a new token with provided claims
-func (s *JWTService) generateToken(userID, username, role string, duration time.Duration, tokenType TokenType) (string, error) {
+func (s *JWTService) generateToken(userID, role string, duration time.Duration, tokenType TokenType) (string, error) {
 	if userID == "" {
 		return "", ErrEmptyClaims
 	}
@@ -89,7 +88,6 @@ func (s *JWTService) generateToken(userID, username, role string, duration time.
 			ID:        uuid.New().String(),
 		},
 		UserID:    userID,
-		Username:  username,
 		Role:      role,
 		TokenType: tokenType,
 	}
@@ -148,13 +146,13 @@ type TokenPair struct {
 }
 
 // GenerateTokenPair generates both access and refresh tokens
-func (s *JWTService) GenerateTokenPair(userID, username, role string) (*TokenPair, error) {
-	accessToken, err := s.GenerateAccessToken(userID, username, role)
+func (s *JWTService) GenerateTokenPair(userID, role string) (*TokenPair, error) {
+	accessToken, err := s.GenerateAccessToken(userID, role)
 	if err != nil {
 		return nil, fmt.Errorf("error generating access token: %w", err)
 	}
 
-	refreshToken, err := s.GenerateRefreshToken(userID, username, role)
+	refreshToken, err := s.GenerateRefreshToken(userID, role)
 	if err != nil {
 		return nil, fmt.Errorf("error generating refresh token: %w", err)
 	}

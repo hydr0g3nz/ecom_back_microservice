@@ -12,7 +12,6 @@ type UserRequest struct {
 
 func (u UserRequest) ToEntity() entity.User {
 	return entity.User{
-		Username:  u.Username,
 		Email:     u.Email,
 		FirstName: u.FirstName,
 		LastName:  u.LastName,

@@ -2,17 +2,12 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/entity"
 	vo "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/valueobject"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/utils"
 	"golang.org/x/crypto/bcrypt"
-)
-
-var (
-	ErrUserExists = errors.New("user already exists")
 )
 
 type AuthUsecase interface {
@@ -24,13 +19,16 @@ type AuthUsecase interface {
 type authUsecase struct {
 	userUsecase  UserUsecase
 	tokenUsecase TokenUsecase
+	errBuilder   *utils.ErrorBuilder
 }
 
 // NewAuthUsecase creates a new instance of AuthUsecase
 func NewAuthUsecase(userUsecase UserUsecase, tokenUsecase TokenUsecase) AuthUsecase {
+
 	return &authUsecase{
 		userUsecase:  userUsecase,
 		tokenUsecase: tokenUsecase,
+		errBuilder:   utils.NewErrorBuilder("AuthUsecase"),
 	}
 }
 
@@ -39,19 +37,18 @@ func (au *authUsecase) Register(ctx context.Context, user entity.User, password 
 	// Check if user already exists
 	existingUser, err := au.userUsecase.GetUserByEmail(ctx, user.Email)
 	if err == nil && existingUser != nil {
-		return nil, nil, ErrUserExists
+		return nil, nil, au.errBuilder.Err(entity.ErrUserExists)
 	}
-
 	// Create user (password handling is done in UserUsecase)
 	createdUser, err := au.userUsecase.CreateUser(ctx, &user, password)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create user: %w", err)
+		return nil, nil, au.errBuilder.Err(err)
 	}
 
 	// Generate token pair
-	tokenPair, err := au.tokenUsecase.GenerateTokenPair(ctx, createdUser.ID, createdUser.Username, vo.User.String())
+	tokenPair, err := au.tokenUsecase.GenerateTokenPair(ctx, createdUser.ID, vo.User.String())
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate token: %w", err)
+		return nil, nil, au.errBuilder.Err(err)
 	}
 	return createdUser, tokenPair, nil
 }
@@ -61,7 +58,7 @@ func (au *authUsecase) Login(ctx context.Context, email, password string) (*enti
 	// Get user by email
 	user, err := au.userUsecase.GetUserByEmail(ctx, email)
 	if err != nil {
-		return nil, ErrInvalidCredentials
+		return nil, entity.ErrInvalidCredentials
 	}
 	comparePassword, err := utils.HashPassword(password)
 	if err != nil {
@@ -70,13 +67,13 @@ func (au *authUsecase) Login(ctx context.Context, email, password string) (*enti
 	// Verify password (assuming this is handled in the user entity or repository)
 	// This is a placeholder - in a real implementation, you would use a proper password verification method
 	if !verifyPassword(user.HashedPassword, string(comparePassword)) {
-		return nil, ErrInvalidCredentials
+		return nil, entity.ErrInvalidCredentials
 	}
 
 	// Generate token pair
-	tokenPair, err := au.tokenUsecase.GenerateTokenPair(ctx, user.ID, user.Username, user.Role.String())
+	tokenPair, err := au.tokenUsecase.GenerateTokenPair(ctx, user.ID, user.Role.String())
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate token: %w", err)
+		return nil, au.errBuilder.Err(err)
 	}
 
 	return tokenPair, nil
@@ -87,19 +84,19 @@ func (au *authUsecase) RefreshToken(ctx context.Context, tokenStr string) (*enti
 	// Validate refresh token
 	claims, err := au.tokenUsecase.ValidateToken(ctx, tokenStr)
 	if err != nil {
-		return nil, ErrInvalidToken
+		return nil, entity.ErrInvalidToken
 	}
 
 	// Get new access token
 	newAccessToken, err := au.tokenUsecase.RefreshAccessToken(ctx, tokenStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to refresh token: %w", err)
+		return nil, au.errBuilder.Err(err)
 	}
 
 	// Get user to populate token response
 	user, err := au.userUsecase.GetUserByID(ctx, claims.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
+		return nil, au.errBuilder.Err(err)
 	}
 
 	// Construct and return the token response

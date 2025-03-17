@@ -35,7 +35,6 @@ func (s *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequest) 
 	s.logger.Info("gRPC CreateUser request received", "email", req.Email)
 
 	user := entity.User{
-		Username:  req.Username,
 		Email:     req.Email,
 		FirstName: req.FirstName,
 		LastName:  req.LastName,
@@ -75,7 +74,6 @@ func (s *UserServer) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) 
 
 	user := entity.User{
 		ID:        req.Id,
-		Username:  req.Username,
 		Email:     req.Email,
 		FirstName: req.FirstName,
 		LastName:  req.LastName,
@@ -153,7 +151,6 @@ func (s *UserServer) RefreshToken(ctx context.Context, req *pb.RefreshTokenReque
 func convertUserToProto(user *entity.User) *pb.UserResponse {
 	return &pb.UserResponse{
 		Id:        user.ID,
-		Username:  user.Username,
 		Email:     user.Email,
 		FirstName: user.FirstName,
 		LastName:  user.LastName,

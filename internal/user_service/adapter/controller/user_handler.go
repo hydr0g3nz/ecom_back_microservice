@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
 	responsener "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller/reponsener"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/dto"
@@ -152,34 +150,3 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 }
 
 // handleServiceError handles errors from the service layer
-func (h *UserHandler) handleServiceError(c *fiber.Ctx, err error, logMessage string) error {
-	h.logger.Error(logMessage, "error", err)
-
-	switch {
-	case errors.Is(err, uc.ErrUserNotFound):
-		return c.Status(fiber.StatusNotFound).JSON(responsener.ErrorResponse{
-			Code:    fiber.StatusNotFound,
-			Message: "User not found",
-		})
-	case errors.Is(err, uc.ErrUserAlreadyExists):
-		return c.Status(fiber.StatusConflict).JSON(responsener.ErrorResponse{
-			Code:    fiber.StatusConflict,
-			Message: "User already exists",
-		})
-	case errors.Is(err, uc.ErrInvalidCredentials):
-		return c.Status(fiber.StatusUnauthorized).JSON(responsener.ErrorResponse{
-			Code:    fiber.StatusUnauthorized,
-			Message: "Invalid credentials",
-		})
-	case errors.Is(err, uc.ErrInvalidToken):
-		return c.Status(fiber.StatusUnauthorized).JSON(responsener.ErrorResponse{
-			Code:    fiber.StatusUnauthorized,
-			Message: "Invalid token",
-		})
-	default:
-		return c.Status(fiber.StatusInternalServerError).JSON(responsener.ErrorResponse{
-			Code:    fiber.StatusInternalServerError,
-			Message: "Internal server error",
-		})
-	}
-}

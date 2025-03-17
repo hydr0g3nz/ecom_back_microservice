@@ -30,7 +30,6 @@ func (u *User) TableName() string {
 func (u *User) ToEntity() *entity.User {
 	return &entity.User{
 		ID:             u.ID,
-		Username:       u.Username,
 		Email:          u.Email,
 		HashedPassword: u.HashedPassword,
 		FirstName:      u.FirstName,
@@ -44,7 +43,6 @@ func (u *User) ToEntity() *entity.User {
 func NewUserModel(user *entity.User) *User {
 	return &User{
 		ID:             user.ID,
-		Username:       user.Username,
 		Email:          user.Email,
 		HashedPassword: user.HashedPassword,
 		FirstName:      user.FirstName,
