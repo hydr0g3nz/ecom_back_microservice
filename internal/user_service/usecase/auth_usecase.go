@@ -79,7 +79,7 @@ func (au *authUsecase) Login(ctx context.Context, email, password string) (*enti
 // RefreshToken generates a new access token using a refresh token
 func (au *authUsecase) RefreshToken(ctx context.Context, tokenStr string) (*entity.TokenPair, error) {
 	// Validate refresh token
-	claims, err := au.tokenUsecase.ValidateToken(ctx, tokenStr)
+	_, err := au.tokenUsecase.ValidateToken(ctx, tokenStr)
 	if err != nil {
 		return nil, entity.ErrInvalidToken
 	}
@@ -90,17 +90,16 @@ func (au *authUsecase) RefreshToken(ctx context.Context, tokenStr string) (*enti
 		return nil, au.errBuilder.Err(err)
 	}
 
-	// Get user to populate token response
-	user, err := au.userUsecase.GetUserByID(ctx, claims.UserID)
-	if err != nil {
-		return nil, au.errBuilder.Err(err)
-	}
+	// // Get user to populate token response
+	// user, err := au.userUsecase.GetUserByID(ctx, claims.UserID)
+	// if err != nil {
+	// 	return nil, au.errBuilder.Err(err)
+	// }
 
 	// Construct and return the token response
 	token := &entity.TokenPair{
 		AccessToken:  newAccessToken,
 		RefreshToken: tokenStr,
 	}
-	fmt.Println("token", user)
 	return token, nil
 }
