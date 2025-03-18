@@ -1,7 +1,8 @@
-package grpc
+package grpcctl
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -43,10 +44,7 @@ func (s *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequest) 
 	createdUser, err := s.userUsecase.CreateUser(ctx, &user, req.Password)
 	if err != nil {
 		s.logger.Error("Failed to create user", "error", err)
-		if err == usecase.ErrUserAlreadyExists {
-			return nil, status.Errorf(codes.AlreadyExists, "user already exists")
-		}
-		return nil, status.Errorf(codes.Internal, "failed to create user: %v", err)
+		return nil, handleError(err)
 	}
 
 	return convertUserToProto(createdUser), nil
@@ -56,13 +54,14 @@ func (s *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequest) 
 func (s *UserServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.UserResponse, error) {
 	s.logger.Info("gRPC GetUser request received", "id", req.Id)
 
+	if req.Id == "" {
+		return nil, status.Error(codes.InvalidArgument, "user ID is required")
+	}
+
 	user, err := s.userUsecase.GetUserByID(ctx, req.Id)
 	if err != nil {
 		s.logger.Error("Failed to get user", "error", err)
-		if err == usecase.ErrUserNotFound {
-			return nil, status.Errorf(codes.NotFound, "user not found")
-		}
-		return nil, status.Errorf(codes.Internal, "failed to get user: %v", err)
+		return nil, handleError(err)
 	}
 
 	return convertUserToProto(user), nil
@@ -71,6 +70,10 @@ func (s *UserServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.U
 // UpdateUser updates an existing user
 func (s *UserServer) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UserResponse, error) {
 	s.logger.Info("gRPC UpdateUser request received", "id", req.Id)
+
+	if req.Id == "" {
+		return nil, status.Error(codes.InvalidArgument, "user ID is required")
+	}
 
 	user := entity.User{
 		ID:        req.Id,
@@ -82,10 +85,7 @@ func (s *UserServer) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) 
 	updatedUser, err := s.userUsecase.UpdateUser(ctx, req.Id, user)
 	if err != nil {
 		s.logger.Error("Failed to update user", "error", err)
-		if err == usecase.ErrUserNotFound {
-			return nil, status.Errorf(codes.NotFound, "user not found")
-		}
-		return nil, status.Errorf(codes.Internal, "failed to update user: %v", err)
+		return nil, handleError(err)
 	}
 
 	return convertUserToProto(updatedUser), nil
@@ -95,13 +95,14 @@ func (s *UserServer) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) 
 func (s *UserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
 	s.logger.Info("gRPC DeleteUser request received", "id", req.Id)
 
+	if req.Id == "" {
+		return nil, status.Error(codes.InvalidArgument, "user ID is required")
+	}
+
 	err := s.userUsecase.DeleteUser(ctx, req.Id)
 	if err != nil {
 		s.logger.Error("Failed to delete user", "error", err)
-		if err == usecase.ErrUserNotFound {
-			return nil, status.Errorf(codes.NotFound, "user not found")
-		}
-		return nil, status.Errorf(codes.Internal, "failed to delete user: %v", err)
+		return nil, handleError(err)
 	}
 
 	return &pb.DeleteUserResponse{Success: true}, nil
@@ -114,10 +115,7 @@ func (s *UserServer) Login(ctx context.Context, req *pb.LoginRequest) (*pb.Login
 	tokenPair, err := s.authUsecase.Login(ctx, req.Email, req.Password)
 	if err != nil {
 		s.logger.Error("Failed to login", "error", err)
-		if err == usecase.ErrInvalidCredentials {
-			return nil, status.Errorf(codes.Unauthenticated, "invalid credentials")
-		}
-		return nil, status.Errorf(codes.Internal, "failed to login: %v", err)
+		return nil, handleError(err)
 	}
 
 	return &pb.LoginResponse{
@@ -132,13 +130,14 @@ func (s *UserServer) Login(ctx context.Context, req *pb.LoginRequest) (*pb.Login
 func (s *UserServer) RefreshToken(ctx context.Context, req *pb.RefreshTokenRequest) (*pb.TokenPairResponse, error) {
 	s.logger.Info("gRPC RefreshToken request received")
 
+	if req.RefreshToken == "" {
+		return nil, status.Error(codes.InvalidArgument, "refresh token is required")
+	}
+
 	tokenPair, err := s.authUsecase.RefreshToken(ctx, req.RefreshToken)
 	if err != nil {
 		s.logger.Error("Failed to refresh token", "error", err)
-		if err == usecase.ErrInvalidToken {
-			return nil, status.Errorf(codes.Unauthenticated, "invalid token")
-		}
-		return nil, status.Errorf(codes.Internal, "failed to refresh token: %v", err)
+		return nil, handleError(err)
 	}
 
 	return &pb.TokenPairResponse{
@@ -157,4 +156,33 @@ func convertUserToProto(user *entity.User) *pb.UserResponse {
 		CreatedAt: timestamppb.New(user.CreatedAt),
 		UpdatedAt: timestamppb.New(user.UpdatedAt),
 	}
+}
+
+// handleError maps domain errors to appropriate gRPC status errors
+func handleError(err error) error {
+	var statusCode codes.Code
+	var message string
+
+	switch {
+	case errors.Is(err, entity.ErrUserNotFound):
+		statusCode = codes.NotFound
+		message = "User not found"
+	case errors.Is(err, entity.ErrUserAlreadyExists) || errors.Is(err, entity.ErrUserExists) || errors.Is(err, entity.ErrUserAlreadyExists):
+		statusCode = codes.AlreadyExists
+		message = "User already exists"
+	case errors.Is(err, entity.ErrInvalidCredentials):
+		statusCode = codes.Unauthenticated
+		message = "Invalid credentials"
+	case errors.Is(err, entity.ErrInvalidToken) || errors.Is(err, entity.ErrTokenHasBeenRevoked) || errors.Is(err, entity.ErrInvalidToken):
+		statusCode = codes.Unauthenticated
+		message = "Invalid or revoked token"
+	case errors.Is(err, entity.ErrInternalServerError):
+		statusCode = codes.Internal
+		message = "Internal server error"
+	default:
+		statusCode = codes.Internal
+		message = "Something went wrong"
+	}
+
+	return status.Error(statusCode, message)
 }

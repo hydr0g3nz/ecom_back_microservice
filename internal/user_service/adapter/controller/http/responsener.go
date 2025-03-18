@@ -1,4 +1,4 @@
-package responsener
+package httpctl
 
 import (
 	"errors"
@@ -8,8 +8,12 @@ import (
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/entity"
 )
 
-type SuccessResponse struct {
-	Code    int    `json:"code"`
+var (
+	ErrBadRequest = errors.New("bad request")
+)
+
+type successResponse struct {
+	Status  int    `json:"status"`
 	Message string `json:"message"`
 	Data    any    `json:"data"`
 }
@@ -18,9 +22,19 @@ type LoginResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 }
+
 type ErrorResponse struct {
 	Status  int    `json:"status"`
 	Message string `json:"message"`
+}
+
+// NewSuccessResponse builds a success response
+func SuccessResp(c *fiber.Ctx, status int, message string, data any) error {
+	return c.Status(status).JSON(successResponse{
+		Status:  status,
+		Message: message,
+		Data:    data,
+	})
 }
 
 // HandleError builds an appropriate Fiber error response based on the domain error
@@ -29,6 +43,9 @@ func HandleError(c *fiber.Ctx, err error) error {
 	var message string
 
 	switch {
+	case errors.Is(err, ErrBadRequest):
+		statusCode = http.StatusBadRequest
+		message = "Bad request"
 	case errors.Is(err, entity.ErrUserNotFound):
 		statusCode = http.StatusNotFound
 		message = "User not found"

@@ -5,20 +5,23 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	fb_logger "github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
+
 	"google.golang.org/grpc"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
 	// Update these imports to match your project structure
-	handler "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller"
 	grpcServer "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller/grpc"
 	pb "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller/grpc/proto"
+	httpctl "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/controller/http"
 	repository "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/repository/gorm"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/adapter/repository/gorm/model"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/usecase"
@@ -104,7 +107,6 @@ func main() {
 			}
 
 			log.Error("HTTP error", "status", code, "error", err.Error())
-
 			return c.Status(code).JSON(fiber.Map{
 				"error": err.Error(),
 			})
@@ -113,9 +115,17 @@ func main() {
 
 	// Add middlewares
 	app.Use(fb_logger.New())
-
+	app.Use(recover.New(recover.Config{
+		EnableStackTrace: true,
+		StackTraceHandler: func(c *fiber.Ctx, err interface{}) {
+			// Log the error along with its stack trace.
+			fmt.Printf("Recovered from panic: %v\nStack trace:\n%s", err, debug.Stack())
+			// Respond with a 500 Internal Server Error.
+			c.Status(fiber.StatusInternalServerError).SendString("Internal Server Error")
+		},
+	}))
 	// Initialize HTTP handler and middleware
-	userHandler := handler.NewUserHandler(authUserUsecase, userUsecase, log)
+	userHandler := httpctl.NewUserHandler(authUserUsecase, userUsecase, log)
 
 	// Register routes
 	api := app.Group("/api")
@@ -142,7 +152,7 @@ func main() {
 }
 
 func startGRPCServer(port string, authUsecase usecase.AuthUsecase, userUsecase usecase.UserUsecase, log applogger.Logger) {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	lis, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%s", port))
 	if err != nil {
 		log.Fatal("Failed to listen for gRPC", "error", err)
 	}

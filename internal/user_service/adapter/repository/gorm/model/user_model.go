@@ -11,7 +11,6 @@ import (
 
 type User struct {
 	ID             string          `gorm:"primaryKey;type:char(36)" json:"id"`
-	Username       string          `gorm:"uniqueIndex;not null;size:50" json:"username"`
 	Email          string          `gorm:"uniqueIndex;not null;size:100" json:"email"`
 	HashedPassword string          `gorm:"not null" json:"-"`
 	FirstName      string          `gorm:"size:100" json:"first_name"`
@@ -37,7 +36,7 @@ func (u *User) ToEntity() *entity.User {
 		Role:           u.Role,
 		CreatedAt:      u.CreatedAt,
 		UpdatedAt:      u.UpdatedAt,
-		DeletedAt:      &u.DeletedAt.Time,
+		DeletedAt:      utils.DeletedAtPtrToTimePtr(u.DeletedAt),
 	}
 }
 func NewUserModel(user *entity.User) *User {
@@ -50,6 +49,6 @@ func NewUserModel(user *entity.User) *User {
 		Role:           user.Role,
 		CreatedAt:      user.CreatedAt,
 		UpdatedAt:      user.UpdatedAt,
-		DeletedAt:      &gorm.DeletedAt{Time: utils.ValueOr(user.DeletedAt)},
+		DeletedAt:      utils.TimePtrToDeletedAt(user.DeletedAt),
 	}
 }
