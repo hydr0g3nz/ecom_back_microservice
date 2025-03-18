@@ -10,7 +10,7 @@ test:
 
 # Run the application
 run:
-	go run cmd/user_service/main.go
+	go run cmd/user_service/main.go -config=config.user.local.yaml
 
 # Generate gRPC code from protobuf
 proto-gen:
