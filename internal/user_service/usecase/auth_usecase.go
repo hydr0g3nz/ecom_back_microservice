@@ -7,7 +7,6 @@ import (
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/entity"
 	vo "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/valueobject"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/utils"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthUsecase interface {
@@ -39,6 +38,7 @@ func (au *authUsecase) Register(ctx context.Context, user entity.User, password 
 	if err == nil && existingUser != nil {
 		return nil, nil, au.errBuilder.Err(entity.ErrUserExists)
 	}
+	user.Role = vo.User
 	// Create user (password handling is done in UserUsecase)
 	createdUser, err := au.userUsecase.CreateUser(ctx, &user, password)
 	if err != nil {
@@ -60,13 +60,10 @@ func (au *authUsecase) Login(ctx context.Context, email, password string) (*enti
 	if err != nil {
 		return nil, entity.ErrInvalidCredentials
 	}
-	comparePassword, err := utils.HashPassword(password)
-	if err != nil {
-		return nil, err
-	}
 	// Verify password (assuming this is handled in the user entity or repository)
 	// This is a placeholder - in a real implementation, you would use a proper password verification method
-	if !verifyPassword(user.HashedPassword, string(comparePassword)) {
+	if err := utils.VerifyPassword(password, user.HashedPassword); err != nil {
+		fmt.Println("error", err)
 		return nil, entity.ErrInvalidCredentials
 	}
 
@@ -106,11 +103,4 @@ func (au *authUsecase) RefreshToken(ctx context.Context, tokenStr string) (*enti
 	}
 	fmt.Println("token", user)
 	return token, nil
-}
-
-// verifyPassword checks if the provided password matches the stored hash
-// This is a placeholder - in a real implementation, you would use a proper password verification method
-func verifyPassword(hashedPassword, plainPassword string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
-	return err == nil
 }

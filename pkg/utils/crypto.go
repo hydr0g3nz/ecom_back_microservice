@@ -6,6 +6,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// Errors
+var (
+	ErrEmptyPassword = errors.New("password cannot be empty")
+	ErrEmptyHash     = errors.New("hash cannot be empty")
+)
+
 func HashPassword(password string) ([]byte, error) {
 	if len(password) == 0 {
 		return nil, errors.New("password is empty")
@@ -17,4 +23,16 @@ func HashPassword(password string) ([]byte, error) {
 	}
 
 	return hashedPassword, nil
+}
+func VerifyPassword(plainPassword, hashedPassword string) error {
+	if plainPassword == "" {
+		return ErrEmptyPassword
+	}
+
+	if hashedPassword == "" {
+		return ErrEmptyHash
+	}
+
+	// CompareHashAndPassword returns nil on success, or an error on failure
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
 }
