@@ -17,7 +17,6 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (*entity.User, error)
 
 	// GetByentity.Username retrieves a user by username
-	GetByUsername(ctx context.Context, username string) (*entity.User, error)
 
 	// Update updates an existing user
 	Update(ctx context.Context, user entity.User) (*entity.User, error)

@@ -49,14 +49,6 @@ func (r *GormUserRepository) GetByEmail(ctx context.Context, email string) (*ent
 }
 
 // GetByUsername retrieves a user by username
-func (r *GormUserRepository) GetByUsername(ctx context.Context, username string) (*entity.User, error) {
-	var user model.User
-	err := r.db.WithContext(ctx).Where("username = ?", username).First(&user).Error
-	if err != nil {
-		return nil, err
-	}
-	return user.ToEntity(), nil
-}
 
 // Update updates an existing user
 func (r *GormUserRepository) Update(ctx context.Context, user entity.User) (*entity.User, error) {

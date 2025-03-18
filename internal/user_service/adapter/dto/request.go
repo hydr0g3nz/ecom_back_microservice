@@ -3,7 +3,6 @@ package dto
 import "github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/entity"
 
 type UserRequest struct {
-	Username  string `json:"username" validate:"required,min=3,max=50"`
 	Email     string `json:"email" validate:"required,email"`
 	Password  string `json:"password" validate:"required,min=8"`
 	FirstName string `json:"first_name" validate:"required"`

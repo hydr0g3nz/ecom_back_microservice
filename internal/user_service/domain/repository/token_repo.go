@@ -8,7 +8,7 @@ import (
 
 type TokenRepository interface {
 	Create(ctx context.Context, token *entity.Token) error
-	GetByToken(ctx context.Context, tokenStr string) (*entity.Token, error)
+	FindByToken(ctx context.Context, tokenStr string) (*entity.Token, error)
 	// GetByUserID(ctx context.Context, userID string, tokenType entity.TokenType) (*entity.Token, error)
 	Delete(ctx context.Context, tokenID string) error
 	DeleteByUserID(ctx context.Context, userID string) error

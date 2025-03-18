@@ -9,7 +9,6 @@ import (
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/user_service/domain/repository"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/jwt_service"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/utils"
-	"gorm.io/gorm"
 )
 
 // TokenUsecase defines the interface for token operations
@@ -96,13 +95,13 @@ func (tu *tokenUsecase) GenerateTokenPair(ctx context.Context, userID, role stri
 // ValidateToken validates a token
 func (tu *tokenUsecase) ValidateToken(ctx context.Context, tokenValue string) (*jwt_service.CustomClaims, error) {
 	// First check if the token exists in the repository
-	token, err := tu.tokenRepo.GetByToken(ctx, tokenValue)
+	token, err := tu.tokenRepo.FindByToken(ctx, tokenValue)
 	if err != nil {
 		return nil, tu.errBuilder.Err(entity.ErrInvalidToken)
 	}
 
 	// Check if token has been revoked or expired in the database
-	if errors.Is(err, gorm.ErrRecordNotFound) || token.ExpiresAt.Before(time.Now()) {
+	if token.ExpiresAt.Before(time.Now()) {
 		return nil, tu.errBuilder.Err(entity.ErrTokenHasBeenRevoked)
 	}
 
