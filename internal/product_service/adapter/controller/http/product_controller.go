@@ -52,6 +52,7 @@ func (h *ProductHandler) RegisterRoutes(r fiber.Router) {
 	categoryGroup.Get("/", h.ListCategories)
 	categoryGroup.Get("/:id", h.GetCategory)
 	categoryGroup.Put("/:id", h.UpdateCategory)
+	categoryGroup.Patch("/:id", h.PatchCategory)
 	categoryGroup.Delete("/:id", h.DeleteCategory)
 	categoryGroup.Get("/:id/children", h.GetChildCategories)
 
@@ -59,6 +60,7 @@ func (h *ProductHandler) RegisterRoutes(r fiber.Router) {
 	inventoryGroup := r.Group("/inventory")
 	inventoryGroup.Get("/:productId", h.GetInventory)
 	inventoryGroup.Put("/:productId", h.UpdateInventory)
+	inventoryGroup.Patch("/:productId", h.PatchInventory)
 	inventoryGroup.Post("/reserve", h.ReserveStock)
 	inventoryGroup.Post("/release", h.ReleaseStock)
 	inventoryGroup.Post("/confirm", h.ConfirmReservation)

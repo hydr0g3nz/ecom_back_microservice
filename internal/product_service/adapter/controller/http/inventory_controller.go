@@ -129,3 +129,26 @@ func (h *ProductHandler) CheckStock(c *fiber.Ctx) error {
 		"in_stock":   inStock,
 	})
 }
+func (h *ProductHandler) PatchInventory(c *fiber.Ctx) error {
+	productId := c.Params("productId")
+	if productId == "" {
+		return HandleError(c, ErrBadRequest)
+	}
+
+	// Parse request into a map for flexible partial updates
+	var patchData map[string]interface{}
+	if err := c.BodyParser(&patchData); err != nil {
+		h.logger.Error("Failed to parse patch request body", "error", err)
+		return HandleError(c, ErrBadRequest)
+	}
+
+	ctx := c.Context()
+	updatedInventory, err := h.inventoryUsecase.UpdateInventoryPartial(ctx, productId, patchData)
+	if err != nil {
+		h.logger.Error("Failed to patch inventory", "productId", productId, "error", err)
+		return HandleError(c, err)
+	}
+
+	response := dto.InventoryResponseFromEntity(updatedInventory)
+	return SuccessResp(c, fiber.StatusOK, "Inventory updated successfully", response)
+}

@@ -33,6 +33,10 @@ service ProductService {
   rpc ConfirmReservation(ReserveStockRequest) returns (google.protobuf.Empty);
   rpc CancelReservation(ReserveStockRequest) returns (google.protobuf.Empty);
   rpc CheckStock(CheckStockRequest) returns (CheckStockResponse);
+
+  rpc PatchProduct(PatchProductRequest) returns (ProductResponse);
+  rpc PatchCategory(PatchCategoryRequest) returns (CategoryResponse);
+  rpc PatchInventory(PatchInventoryRequest) returns (InventoryResponse);
 }
 
 // Product messages
@@ -183,4 +187,29 @@ message InventoryResponse {
   int32 reserved = 3;
   int32 available = 4;
   google.protobuf.Timestamp updated_at = 5;
+}
+message PatchProductRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional double price = 4;
+  optional string category_id = 5;
+  optional string image_url = 6;
+  optional string sku = 7;
+  optional string status = 8;
+}
+
+// New message for patch category request
+message PatchCategoryRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional string parent_id = 4;
+}
+
+// New message for patch inventory request
+message PatchInventoryRequest {
+  string product_id = 1;
+  optional int32 quantity = 2;
+  optional int32 reserved = 3;
 }

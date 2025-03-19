@@ -138,3 +138,26 @@ func (h *ProductHandler) GetChildCategories(c *fiber.Ctx) error {
 
 	return SuccessResp(c, fiber.StatusOK, "Child categories retrieved successfully", responseCategories)
 }
+func (h *ProductHandler) PatchCategory(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return HandleError(c, ErrBadRequest)
+	}
+
+	// Parse request into a map for flexible partial updates
+	var patchData map[string]interface{}
+	if err := c.BodyParser(&patchData); err != nil {
+		h.logger.Error("Failed to parse patch request body", "error", err)
+		return HandleError(c, ErrBadRequest)
+	}
+
+	ctx := c.Context()
+	updatedCategory, err := h.categoryUsecase.UpdateCategoryPartial(ctx, id, patchData)
+	if err != nil {
+		h.logger.Error("Failed to patch category", "id", id, "error", err)
+		return HandleError(c, err)
+	}
+
+	response := dto.CategoryResponseFromEntity(updatedCategory)
+	return SuccessResp(c, fiber.StatusOK, "Category updated successfully", response)
+}

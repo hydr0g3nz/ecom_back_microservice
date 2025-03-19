@@ -41,6 +41,9 @@ const (
 	ProductService_ConfirmReservation_FullMethodName    = "/product.ProductService/ConfirmReservation"
 	ProductService_CancelReservation_FullMethodName     = "/product.ProductService/CancelReservation"
 	ProductService_CheckStock_FullMethodName            = "/product.ProductService/CheckStock"
+	ProductService_PatchProduct_FullMethodName          = "/product.ProductService/PatchProduct"
+	ProductService_PatchCategory_FullMethodName         = "/product.ProductService/PatchCategory"
+	ProductService_PatchInventory_FullMethodName        = "/product.ProductService/PatchInventory"
 )
 
 // ProductServiceClient is the client API for ProductService service.
@@ -69,6 +72,9 @@ type ProductServiceClient interface {
 	ConfirmReservation(ctx context.Context, in *ReserveStockRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CancelReservation(ctx context.Context, in *ReserveStockRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CheckStock(ctx context.Context, in *CheckStockRequest, opts ...grpc.CallOption) (*CheckStockResponse, error)
+	PatchProduct(ctx context.Context, in *PatchProductRequest, opts ...grpc.CallOption) (*ProductResponse, error)
+	PatchCategory(ctx context.Context, in *PatchCategoryRequest, opts ...grpc.CallOption) (*CategoryResponse, error)
+	PatchInventory(ctx context.Context, in *PatchInventoryRequest, opts ...grpc.CallOption) (*InventoryResponse, error)
 }
 
 type productServiceClient struct {
@@ -269,6 +275,36 @@ func (c *productServiceClient) CheckStock(ctx context.Context, in *CheckStockReq
 	return out, nil
 }
 
+func (c *productServiceClient) PatchProduct(ctx context.Context, in *PatchProductRequest, opts ...grpc.CallOption) (*ProductResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProductResponse)
+	err := c.cc.Invoke(ctx, ProductService_PatchProduct_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *productServiceClient) PatchCategory(ctx context.Context, in *PatchCategoryRequest, opts ...grpc.CallOption) (*CategoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CategoryResponse)
+	err := c.cc.Invoke(ctx, ProductService_PatchCategory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *productServiceClient) PatchInventory(ctx context.Context, in *PatchInventoryRequest, opts ...grpc.CallOption) (*InventoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InventoryResponse)
+	err := c.cc.Invoke(ctx, ProductService_PatchInventory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProductServiceServer is the server API for ProductService service.
 // All implementations must embed UnimplementedProductServiceServer
 // for forward compatibility.
@@ -295,6 +331,9 @@ type ProductServiceServer interface {
 	ConfirmReservation(context.Context, *ReserveStockRequest) (*emptypb.Empty, error)
 	CancelReservation(context.Context, *ReserveStockRequest) (*emptypb.Empty, error)
 	CheckStock(context.Context, *CheckStockRequest) (*CheckStockResponse, error)
+	PatchProduct(context.Context, *PatchProductRequest) (*ProductResponse, error)
+	PatchCategory(context.Context, *PatchCategoryRequest) (*CategoryResponse, error)
+	PatchInventory(context.Context, *PatchInventoryRequest) (*InventoryResponse, error)
 	mustEmbedUnimplementedProductServiceServer()
 }
 
@@ -361,6 +400,15 @@ func (UnimplementedProductServiceServer) CancelReservation(context.Context, *Res
 }
 func (UnimplementedProductServiceServer) CheckStock(context.Context, *CheckStockRequest) (*CheckStockResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckStock not implemented")
+}
+func (UnimplementedProductServiceServer) PatchProduct(context.Context, *PatchProductRequest) (*ProductResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PatchProduct not implemented")
+}
+func (UnimplementedProductServiceServer) PatchCategory(context.Context, *PatchCategoryRequest) (*CategoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PatchCategory not implemented")
+}
+func (UnimplementedProductServiceServer) PatchInventory(context.Context, *PatchInventoryRequest) (*InventoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PatchInventory not implemented")
 }
 func (UnimplementedProductServiceServer) mustEmbedUnimplementedProductServiceServer() {}
 func (UnimplementedProductServiceServer) testEmbeddedByValue()                        {}
@@ -725,6 +773,60 @@ func _ProductService_CheckStock_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProductService_PatchProduct_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PatchProductRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProductServiceServer).PatchProduct(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProductService_PatchProduct_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProductServiceServer).PatchProduct(ctx, req.(*PatchProductRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProductService_PatchCategory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PatchCategoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProductServiceServer).PatchCategory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProductService_PatchCategory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProductServiceServer).PatchCategory(ctx, req.(*PatchCategoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProductService_PatchInventory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PatchInventoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProductServiceServer).PatchInventory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProductService_PatchInventory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProductServiceServer).PatchInventory(ctx, req.(*PatchInventoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProductService_ServiceDesc is the grpc.ServiceDesc for ProductService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -807,6 +909,18 @@ var ProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CheckStock",
 			Handler:    _ProductService_CheckStock_Handler,
+		},
+		{
+			MethodName: "PatchProduct",
+			Handler:    _ProductService_PatchProduct_Handler,
+		},
+		{
+			MethodName: "PatchCategory",
+			Handler:    _ProductService_PatchCategory_Handler,
+		},
+		{
+			MethodName: "PatchInventory",
+			Handler:    _ProductService_PatchInventory_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

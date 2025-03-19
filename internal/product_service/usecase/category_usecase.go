@@ -25,7 +25,7 @@ type CategoryUsecase interface {
 
 	// UpdateCategory updates an existing category
 	UpdateCategory(ctx context.Context, id string, category entity.Category) (*entity.Category, error)
-
+	UpdateCategoryPartial(ctx context.Context, id string, patch map[string]interface{}) (*entity.Category, error)
 	// DeleteCategory deletes a category by ID
 	DeleteCategory(ctx context.Context, id string) error
 }
@@ -201,4 +201,65 @@ func (cu *categoryUsecase) DeleteCategory(ctx context.Context, id string) error 
 	}
 
 	return nil
+}
+func (cu *categoryUsecase) UpdateCategoryPartial(ctx context.Context, id string, patch map[string]interface{}) (*entity.Category, error) {
+	// Ensure the category exists
+	existingCategory, err := cu.categoryRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, cu.errBuilder.Err(entity.ErrCategoryNotFound)
+	}
+
+	// Create a modifiable copy of the existing category
+	updatedCategory := *existingCategory
+
+	// Apply updates from the patch map
+	for key, value := range patch {
+		switch key {
+		case "name":
+			if name, ok := value.(string); ok && name != "" {
+				// Check if name is unique
+				if name != existingCategory.Name {
+					c, err := cu.categoryRepo.GetByName(ctx, name)
+					if err == nil && c != nil && c.ID != id {
+						return nil, cu.errBuilder.Err(entity.ErrCategoryAlreadyExists)
+					}
+				}
+				updatedCategory.Name = name
+			}
+		case "description":
+			if description, ok := value.(string); ok {
+				updatedCategory.Description = description
+			}
+		case "parent_id":
+			if parentID, ok := value.(string); ok && parentID != "" {
+				// Prevent setting itself as parent
+				if parentID == id {
+					return nil, cu.errBuilder.Err(errors.New("category cannot be its own parent"))
+				}
+
+				// Validate parent exists
+				parent, err := cu.categoryRepo.GetByID(ctx, parentID)
+				if err != nil {
+					return nil, cu.errBuilder.Err(entity.ErrCategoryNotFound)
+				}
+
+				// Set parentID and update level
+				parentIDCopy := parentID // Create a copy to use as pointer
+				updatedCategory.ParentID = &parentIDCopy
+				updatedCategory.Level = parent.Level + 1
+			} else if value == nil {
+				// Remove parent (make it a top-level category)
+				updatedCategory.ParentID = nil
+				updatedCategory.Level = 1
+			}
+		}
+	}
+
+	// Update the category
+	result, err := cu.categoryRepo.Update(ctx, updatedCategory)
+	if err != nil {
+		return nil, cu.errBuilder.Err(err)
+	}
+
+	return result, nil
 }

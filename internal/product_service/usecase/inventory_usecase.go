@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/product_service/domain/entity"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/product_service/domain/repository"
@@ -15,7 +16,7 @@ type InventoryUsecase interface {
 
 	// UpdateInventory updates the inventory for a product
 	UpdateInventory(ctx context.Context, productID string, quantity int) error
-
+	UpdateInventoryPartial(ctx context.Context, productID string, patch map[string]interface{}) (*entity.Inventory, error)
 	// ReserveStock reserves stock for a product (e.g., when added to cart)
 	ReserveStock(ctx context.Context, productID string, quantity int) error
 
@@ -185,4 +186,64 @@ func (iu *inventoryUsecase) IsInStock(ctx context.Context, productID string, qua
 	// Check if available stock is sufficient
 	availableStock := inventory.Quantity - inventory.Reserved
 	return availableStock >= quantity, nil
+}
+func (iu *inventoryUsecase) UpdateInventoryPartial(ctx context.Context, productID string, patch map[string]interface{}) (*entity.Inventory, error) {
+	// Ensure the product exists
+	_, err := iu.productRepo.GetByID(ctx, productID)
+	if err != nil {
+		return nil, iu.errBuilder.Err(entity.ErrProductNotFound)
+	}
+
+	// Get current inventory
+	inventory, err := iu.inventoryRepo.GetByProductID(ctx, productID)
+	if err != nil {
+		return nil, iu.errBuilder.Err(err)
+	}
+
+	// Create a modifiable copy
+	updatedInventory := *inventory
+
+	// Apply updates from patch
+	for key, value := range patch {
+		switch key {
+		case "quantity":
+			switch v := value.(type) {
+			case float64:
+				if v >= 0 {
+					updatedInventory.Quantity = int(v)
+				}
+			case int:
+				if v >= 0 {
+					updatedInventory.Quantity = v
+				}
+			case string:
+				if quantity, err := strconv.Atoi(v); err == nil && quantity >= 0 {
+					updatedInventory.Quantity = quantity
+				}
+			}
+		case "reserved":
+			switch v := value.(type) {
+			case float64:
+				if v >= 0 && int(v) <= updatedInventory.Quantity {
+					updatedInventory.Reserved = int(v)
+				}
+			case int:
+				if v >= 0 && v <= updatedInventory.Quantity {
+					updatedInventory.Reserved = v
+				}
+			case string:
+				if reserved, err := strconv.Atoi(v); err == nil && reserved >= 0 && reserved <= updatedInventory.Quantity {
+					updatedInventory.Reserved = reserved
+				}
+			}
+		}
+	}
+
+	// Update inventory
+	result, err := iu.inventoryRepo.Update(ctx, updatedInventory)
+	if err != nil {
+		return nil, iu.errBuilder.Err(err)
+	}
+
+	return result, nil
 }

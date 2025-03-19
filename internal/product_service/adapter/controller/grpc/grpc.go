@@ -514,6 +514,111 @@ func (s *ProductServer) CheckStock(ctx context.Context, req *pb.CheckStockReques
 		InStock:   inStock,
 	}, nil
 }
+func (s *ProductServer) PatchProduct(ctx context.Context, req *pb.PatchProductRequest) (*pb.ProductResponse, error) {
+	s.logger.Info("gRPC PatchProduct request received", "id", req.Id)
+
+	if req.Id == "" {
+		return nil, status.Error(codes.InvalidArgument, "product ID is required")
+	}
+
+	// Convert the fields map from protobuf to Go map for the usecase
+	patchData := make(map[string]interface{})
+
+	// Process fields based on which ones are set in the request
+	if req.Name != nil {
+		patchData["name"] = req.GetName()
+	}
+	if req.Description != nil {
+		patchData["description"] = req.GetDescription()
+	}
+	if req.Price != nil {
+		patchData["price"] = req.GetPrice()
+	}
+	if req.CategoryId != nil {
+		patchData["category_id"] = req.GetCategoryId()
+	}
+	if req.ImageUrl != nil {
+		patchData["image_url"] = req.GetImageUrl()
+	}
+	if req.Sku != nil {
+		patchData["sku"] = req.GetSku()
+	}
+	if req.Status != nil {
+		patchData["status"] = req.GetStatus()
+	}
+
+	updatedProduct, err := s.productUsecase.UpdateProductPartial(ctx, req.Id, patchData)
+	if err != nil {
+		s.logger.Error("Failed to patch product", "error", err)
+		return nil, handleError(err)
+	}
+
+	return convertProductToProto(updatedProduct), nil
+}
+
+// Add a PatchCategory method to handle partial category updates
+func (s *ProductServer) PatchCategory(ctx context.Context, req *pb.PatchCategoryRequest) (*pb.CategoryResponse, error) {
+	s.logger.Info("gRPC PatchCategory request received", "id", req.Id)
+
+	if req.Id == "" {
+		return nil, status.Error(codes.InvalidArgument, "category ID is required")
+	}
+
+	// Convert the fields map from protobuf to Go map for the usecase
+	patchData := make(map[string]interface{})
+
+	// Process fields based on which ones are set in the request
+	if req.Name != nil {
+		patchData["name"] = req.GetName()
+	}
+	if req.Description != nil {
+		patchData["description"] = req.GetDescription()
+	}
+	if req.ParentId != nil {
+		if req.GetParentId() == "" {
+			// Empty string represents removing the parent (making it top-level)
+			patchData["parent_id"] = nil
+		} else {
+			patchData["parent_id"] = req.GetParentId()
+		}
+	}
+
+	updatedCategory, err := s.categoryUsecase.UpdateCategoryPartial(ctx, req.Id, patchData)
+	if err != nil {
+		s.logger.Error("Failed to patch category", "error", err)
+		return nil, handleError(err)
+	}
+
+	return convertCategoryToProto(updatedCategory), nil
+}
+
+// Add a PatchInventory method to handle partial inventory updates
+func (s *ProductServer) PatchInventory(ctx context.Context, req *pb.PatchInventoryRequest) (*pb.InventoryResponse, error) {
+	s.logger.Info("gRPC PatchInventory request received", "productId", req.ProductId)
+
+	if req.ProductId == "" {
+		return nil, status.Error(codes.InvalidArgument, "product ID is required")
+	}
+
+	// Convert the fields map from protobuf to Go map for the usecase
+	patchData := make(map[string]interface{})
+
+	// Process fields based on which ones are set in the request
+	if req.Quantity != nil {
+		patchData["quantity"] = int(req.GetQuantity())
+	}
+	if req.Reserved != nil {
+		patchData["reserved"] = int(req.GetReserved())
+	}
+
+	updatedInventory, err := s.inventoryUsecase.UpdateInventoryPartial(ctx, req.ProductId, patchData)
+	if err != nil {
+		s.logger.Error("Failed to patch inventory", "error", err)
+		return nil, handleError(err)
+	}
+
+	return convertInventoryToProto(updatedInventory), nil
+}
 
 // Helper functions to convert domain entities to protobuf responses
 func convertProductToProto(product *entity.Product) *pb.ProductResponse {
