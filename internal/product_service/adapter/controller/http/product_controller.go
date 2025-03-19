@@ -41,6 +41,7 @@ func (h *ProductHandler) RegisterRoutes(r fiber.Router) {
 	api.Get("/", h.ListProducts)
 	api.Get("/:id", h.GetProduct)
 	api.Put("/:id", h.UpdateProduct)
+	api.Patch("/:id", h.PatchProduct)
 	api.Delete("/:id", h.DeleteProduct)
 	api.Get("/sku/:sku", h.GetProductBySKU)
 	api.Get("/category/:categoryId", h.GetProductsByCategory)
@@ -229,4 +230,29 @@ func (h *ProductHandler) GetProductsByCategory(c *fiber.Ctx) error {
 
 	paginatedResponse := dto.NewPaginatedResponse(total, page, pageSize, responseProducts)
 	return SuccessResp(c, fiber.StatusOK, "Products retrieved successfully", paginatedResponse)
+}
+func (h *ProductHandler) PatchProduct(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return HandleError(c, ErrBadRequest)
+	}
+
+	// Parse request into a map to support flexible partial updates
+	var patchData map[string]interface{}
+	if err := c.BodyParser(&patchData); err != nil {
+		h.logger.Error("Failed to parse patch request body", "error", err)
+		return HandleError(c, ErrBadRequest)
+	}
+
+	ctx := c.Context()
+
+	// Use the UpdateProductPartial method
+	updatedProduct, err := h.productUsecase.UpdateProductPartial(ctx, id, patchData)
+	if err != nil {
+		h.logger.Error("Failed to patch product", "id", id, "error", err)
+		return HandleError(c, err)
+	}
+
+	response := dto.ProductResponseFromEntity(updatedProduct)
+	return SuccessResp(c, fiber.StatusOK, "Product updated successfully", response)
 }

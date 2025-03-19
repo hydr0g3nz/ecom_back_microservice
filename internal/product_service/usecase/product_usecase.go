@@ -26,6 +26,7 @@ type ProductUsecase interface {
 	// UpdateProduct updates an existing product
 	UpdateProduct(ctx context.Context, id string, product entity.Product) (*entity.Product, error)
 
+	UpdateProductPartial(ctx context.Context, id string, patch map[string]interface{}) (*entity.Product, error)
 	// DeleteProduct deletes a product by ID
 	DeleteProduct(ctx context.Context, id string) error
 
@@ -199,4 +200,70 @@ func (pu *productUsecase) GetProductsByCategory(ctx context.Context, categoryID 
 	}
 
 	return products, total, nil
+}
+func (pu *productUsecase) UpdateProductPartial(ctx context.Context, id string, patch map[string]interface{}) (*entity.Product, error) {
+	// Ensure the product exists and get the current state
+	existingProduct, err := pu.productRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, pu.errBuilder.Err(entity.ErrProductNotFound)
+	}
+
+	// Create a modifiable copy of the existing product
+	updatedProduct := existingProduct
+
+	// Apply updates from the patch map to the product entity
+	for key, value := range patch {
+		switch key {
+		case "name":
+			if name, ok := value.(string); ok {
+				updatedProduct.Name = name
+			}
+		case "description":
+			if description, ok := value.(string); ok {
+				updatedProduct.Description = description
+			}
+		case "price":
+			if price, ok := value.(float64); ok && price > 0 {
+				updatedProduct.Price = price
+			}
+		case "category_id":
+			if categoryID, ok := value.(string); ok {
+				// Validate that the category exists
+				_, err := pu.categoryRepo.GetByID(ctx, categoryID)
+				if err != nil {
+					return nil, pu.errBuilder.Err(entity.ErrCategoryNotFound)
+				}
+				updatedProduct.CategoryID = categoryID
+			}
+		case "image_url":
+			if imageURL, ok := value.(string); ok {
+				updatedProduct.ImageURL = imageURL
+			}
+		case "sku":
+			if sku, ok := value.(string); ok && sku != existingProduct.SKU {
+				// Check if SKU is unique
+				p, err := pu.productRepo.GetBySKU(ctx, sku)
+				if err == nil && p != nil && p.ID != id {
+					return nil, pu.errBuilder.Err(entity.ErrProductSKUExists)
+				}
+				updatedProduct.SKU = sku
+			}
+		case "status":
+			if status, ok := value.(string); ok {
+				// Validate status
+				if _, err := valueobject.ParseProductStatus(status); err != nil {
+					return nil, pu.errBuilder.Err(err)
+				}
+				updatedProduct.Status = status
+			}
+		}
+	}
+
+	// Update the product
+	updatedProduct, err = pu.productRepo.Update(ctx, *updatedProduct)
+	if err != nil {
+		return nil, pu.errBuilder.Err(err)
+	}
+
+	return updatedProduct, nil
 }
