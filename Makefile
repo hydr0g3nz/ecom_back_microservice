@@ -43,7 +43,27 @@ proto-gen-product:
        --go-grpc_out=. \
        --go-grpc_opt=paths=source_relative \
        internal/product_service/adapter/controller/grpc/proto/product_service.proto
+.PHONY: build-order test-order run-order proto-gen-order
 
+# Build the order service
+build-order:
+	go build -o bin/order_service cmd/order_service/main.go
+
+# Run tests for order service
+test-order:
+	go test -v ./internal/order_service/...
+
+# Run the order service
+run-order:
+	go run cmd/order_service/main.go -config=config.order.local.yaml
+
+# Generate gRPC code from protobuf for order service
+proto-gen-order:
+	protoc --go_out=. \
+       --go_opt=paths=source_relative \
+       --go-grpc_out=. \
+       --go-grpc_opt=paths=source_relative \
+       internal/order_service/adapter/controller/grpc/proto/order_service.proto
 # Install required tools
 install-tools:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.31.0

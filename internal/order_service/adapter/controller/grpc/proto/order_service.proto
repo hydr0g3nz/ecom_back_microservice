@@ -1,0 +1,238 @@
+syntax = "proto3";
+
+package order;
+
+option go_package = "github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/adapter/controller/grpc/proto";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+service OrderService {
+  // Order operations
+  rpc CreateOrder(CreateOrderRequest) returns (OrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (OrderResponse);
+  rpc UpdateOrder(UpdateOrderRequest) returns (OrderResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (google.protobuf.Empty);
+  rpc ListOrdersByUser(ListOrdersByUserRequest) returns (ListOrdersResponse);
+  rpc ListOrdersByStatus(ListOrdersByStatusRequest) returns (ListOrdersResponse);
+  rpc SearchOrders(SearchOrdersRequest) returns (ListOrdersResponse);
+  
+  // Order history
+  rpc GetOrderHistory(GetOrderHistoryRequest) returns (OrderHistoryResponse);
+  
+  // Payment operations
+  rpc ProcessPayment(ProcessPaymentRequest) returns (PaymentResponse);
+  
+  // Shipping operations
+  rpc UpdateShipping(UpdateShippingRequest) returns (ShippingResponse);
+  rpc GetShipping(GetShippingRequest) returns (ShippingResponse);
+}
+
+// Order Messages
+message OrderItemRequest {
+  string product_id = 1;
+  string name = 2;
+  string sku = 3;
+  int32 quantity = 4;
+  double price = 5;
+  string currency_code = 6;
+}
+
+message AddressRequest {
+  string first_name = 1;
+  string last_name = 2;
+  string address_line1 = 3;
+  string address_line2 = 4;
+  string city = 5;
+  string state = 6;
+  string postal_code = 7;
+  string country = 8;
+  string phone = 9;
+  string email = 10;
+}
+
+message CreateOrderRequest {
+  string user_id = 1;
+  repeated OrderItemRequest items = 2;
+  AddressRequest shipping_address = 3;
+  AddressRequest billing_address = 4;
+  string notes = 5;
+  repeated string promotion_codes = 6;
+}
+
+message GetOrderRequest {
+  string id = 1;
+}
+
+message UpdateOrderRequest {
+  string id = 1;
+  string notes = 2;
+  AddressRequest shipping_address = 3;
+  AddressRequest billing_address = 4;
+}
+
+message CancelOrderRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+message ListOrdersByUserRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListOrdersByStatusRequest {
+  string status = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message SearchOrdersRequest {
+  string user_id = 1;
+  string status = 2;
+  string product_id = 3;
+  google.protobuf.Timestamp start_date = 4;
+  google.protobuf.Timestamp end_date = 5;
+  double min_amount = 6;
+  double max_amount = 7;
+  int32 page = 8;
+  int32 page_size = 9;
+}
+
+message OrderItem {
+  string id = 1;
+  string product_id = 2;
+  string name = 3;
+  string sku = 4;
+  int32 quantity = 5;
+  double price = 6;
+  double total_price = 7;
+  string currency_code = 8;
+}
+
+message Address {
+  string first_name = 1;
+  string last_name = 2;
+  string address_line1 = 3;
+  string address_line2 = 4;
+  string city = 5;
+  string state = 6;
+  string postal_code = 7;
+  string country = 8;
+  string phone = 9;
+  string email = 10;
+}
+
+message Discount {
+  string code = 1;
+  string description = 2;
+  string type = 3;
+  double amount = 4;
+}
+
+message OrderResponse {
+  string id = 1;
+  string user_id = 2;
+  repeated OrderItem items = 3;
+  double total_amount = 4;
+  string status = 5;
+  Address shipping_address = 6;
+  Address billing_address = 7;
+  string payment_id = 8;
+  string shipping_id = 9;
+  string notes = 10;
+  repeated string promotion_codes = 11;
+  repeated Discount discounts = 12;
+  double tax_amount = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+  google.protobuf.Timestamp completed_at = 16;
+  google.protobuf.Timestamp cancelled_at = 17;
+  int32 version = 18;
+}
+
+message ListOrdersResponse {
+  int32 total = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  int32 total_pages = 4;
+  repeated OrderResponse orders = 5;
+}
+
+// Order History Messages
+message GetOrderHistoryRequest {
+  string order_id = 1;
+}
+
+message OrderEvent {
+  string id = 1;
+  string order_id = 2;
+  string type = 3;
+  bytes data = 4;
+  int32 version = 5;
+  google.protobuf.Timestamp timestamp = 6;
+  string user_id = 7;
+}
+
+message OrderHistoryResponse {
+  string order_id = 1;
+  repeated OrderEvent events = 2;
+}
+
+// Payment Messages
+message ProcessPaymentRequest {
+  string order_id = 1;
+  double amount = 2;
+  string currency = 3;
+  string method = 4;
+  string transaction_id = 5;
+  string gateway_response = 6;
+}
+
+message PaymentResponse {
+  string id = 1;
+  string order_id = 2;
+  double amount = 3;
+  string currency = 4;
+  string method = 5;
+  string status = 6;
+  string transaction_id = 7;
+  string gateway_response = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  google.protobuf.Timestamp completed_at = 11;
+  google.protobuf.Timestamp failed_at = 12;
+}
+
+// Shipping Messages
+message UpdateShippingRequest {
+  string order_id = 1;
+  string carrier = 2;
+  string tracking_number = 3;
+  string status = 4;
+  google.protobuf.Timestamp estimated_delivery = 5;
+  string shipping_method = 6;
+  double shipping_cost = 7;
+  string notes = 8;
+}
+
+message GetShippingRequest {
+  string order_id = 1;
+}
+
+message ShippingResponse {
+  string id = 1;
+  string order_id = 2;
+  string carrier = 3;
+  string tracking_number = 4;
+  string status = 5;
+  google.protobuf.Timestamp estimated_delivery = 6;
+  google.protobuf.Timestamp shipped_at = 7;
+  google.protobuf.Timestamp delivered_at = 8;
+  string shipping_method = 9;
+  double shipping_cost = 10;
+  string notes = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
