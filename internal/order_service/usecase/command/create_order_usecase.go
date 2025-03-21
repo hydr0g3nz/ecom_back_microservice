@@ -117,8 +117,7 @@ func (uc *createOrderUsecase) Execute(ctx context.Context, input CreateOrderInpu
 	// Publish the event
 	err = uc.eventPublisher.PublishOrderCreated(ctx, createdOrder)
 	if err != nil {
-		// Log the error but don't fail the operation
-		// Event publisher failures shouldn't prevent order creation
+		return nil, err
 	}
 
 	return createdOrder, nil

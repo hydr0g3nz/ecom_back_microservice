@@ -443,8 +443,8 @@ func main() {
 	configPath := flag.String("config", "config.order.yaml", "path to config file")
 	flag.Parse()
 
-	// Initialize logger
-	logger := applogger.NewZapLogger()
+	// Initialize logger with logrus implementation instead of zap
+	logger := applogger.NewLogrusLogger()
 	logger.Info("Starting order service")
 
 	// Load configuration
