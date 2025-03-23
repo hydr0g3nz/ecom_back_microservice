@@ -2,6 +2,7 @@ package cassandra
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -9,16 +10,21 @@ import (
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/adapter/repository/cassandra/model"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/entity"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/valueobject"
+	"github.com/hydr0g3nz/ecom_back_microservice/pkg/utils"
 )
 
 // CassandraOrderRepository implements the OrderRepository interface using Cassandra
 type CassandraOrderRepository struct {
-	session *gocql.Session
+	session    *gocql.Session
+	errBuilder *utils.ErrorBuilder
 }
 
 // NewCassandraOrderRepository creates a new instance of CassandraOrderRepository
 func NewCassandraOrderRepository(session *gocql.Session) *CassandraOrderRepository {
-	return &CassandraOrderRepository{session: session}
+	return &CassandraOrderRepository{
+		session:    session,
+		errBuilder: utils.NewErrorBuilder("CassandraOrderRepository"),
+	}
 }
 
 // Create stores a new order
@@ -37,7 +43,7 @@ func (r *CassandraOrderRepository) Create(ctx context.Context, order *entity.Ord
 	// Convert to model
 	orderModel, err := model.FromOrderEntity(order)
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
 	// Insert into orders table
@@ -71,7 +77,7 @@ func (r *CassandraOrderRepository) Create(ctx context.Context, order *entity.Ord
 	).WithContext(ctx).Exec()
 
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
 	// Insert into orders_by_user table for user-based lookups
@@ -90,8 +96,8 @@ func (r *CassandraOrderRepository) Create(ctx context.Context, order *entity.Ord
 	).WithContext(ctx).Exec()
 
 	if err != nil {
-		// TODO: Handle partial failure case
-		return nil, err
+		// Log partial failure but don't fail the operation
+		return nil, r.errBuilder.Err(err)
 	}
 
 	return order, nil
@@ -101,7 +107,7 @@ func (r *CassandraOrderRepository) Create(ctx context.Context, order *entity.Ord
 func (r *CassandraOrderRepository) GetByID(ctx context.Context, id string) (*entity.Order, error) {
 	orderID, err := gocql.ParseUUID(id)
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(entity.ErrInvalidOrderData)
 	}
 
 	var orderModel model.OrderModel
@@ -137,12 +143,17 @@ func (r *CassandraOrderRepository) GetByID(ctx context.Context, id string) (*ent
 
 	if err != nil {
 		if err == gocql.ErrNotFound {
-			return nil, entity.ErrOrderNotFound
+			return nil, r.errBuilder.Err(entity.ErrOrderNotFound)
 		}
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
-	return orderModel.ToEntity()
+	orderEntity, err := orderModel.ToEntity()
+	if err != nil {
+		return nil, r.errBuilder.Err(err)
+	}
+
+	return orderEntity, nil
 }
 
 // Update updates an existing order
@@ -150,7 +161,7 @@ func (r *CassandraOrderRepository) Update(ctx context.Context, order *entity.Ord
 	// Get current version for optimistic locking
 	currentOrder, err := r.GetByID(ctx, order.ID)
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
 	// Set timestamps and increment version
@@ -160,7 +171,7 @@ func (r *CassandraOrderRepository) Update(ctx context.Context, order *entity.Ord
 	// Convert to model
 	orderModel, err := model.FromOrderEntity(order)
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
 	// Update with optimistic locking
@@ -198,11 +209,11 @@ func (r *CassandraOrderRepository) Update(ctx context.Context, order *entity.Ord
 	).WithContext(ctx).ScanCAS(&applied)
 
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
 	if !applied {
-		return nil, entity.ErrInvalidOrderStatus
+		return nil, r.errBuilder.Err(entity.ErrInvalidOrderStatus)
 	}
 
 	// Update the orders_by_user table
@@ -221,7 +232,6 @@ func (r *CassandraOrderRepository) Update(ctx context.Context, order *entity.Ord
 
 	if err != nil {
 		// Log this error but don't fail the operation
-		// TODO: Implement proper error logging
 	}
 
 	return order, nil
@@ -231,18 +241,18 @@ func (r *CassandraOrderRepository) Update(ctx context.Context, order *entity.Ord
 func (r *CassandraOrderRepository) UpdateStatus(ctx context.Context, id string, status valueobject.OrderStatus) error {
 	orderID, err := gocql.ParseUUID(id)
 	if err != nil {
-		return err
+		return r.errBuilder.Err(entity.ErrInvalidOrderData)
 	}
 
 	// Get current order to check for valid status transition and optimistic locking
 	currentOrder, err := r.GetByID(ctx, id)
 	if err != nil {
-		return err
+		return r.errBuilder.Err(err)
 	}
 
 	// Verify valid status transition
 	if !valueobject.IsValidTransition(currentOrder.Status, status) {
-		return entity.ErrInvalidOrderStatus
+		return r.errBuilder.Err(entity.ErrInvalidOrderStatus)
 	}
 
 	now := time.Now()
@@ -276,11 +286,12 @@ func (r *CassandraOrderRepository) UpdateStatus(ctx context.Context, id string, 
 	).WithContext(ctx).ScanCAS(&applied)
 
 	if err != nil {
-		return err
+		return r.errBuilder.Err(err)
 	}
 
 	if !applied {
-		return entity.ErrInvalidOrderStatus
+		fmt.Println("Error updating orders table:", err)
+		return r.errBuilder.Err(entity.ErrInvalidOrderStatus)
 	}
 
 	// Update the orders_by_user table
@@ -296,7 +307,12 @@ func (r *CassandraOrderRepository) UpdateStatus(ctx context.Context, id string, 
 		orderID,
 	).WithContext(ctx).Exec()
 
-	return err
+	if err != nil {
+		// Log this error but don't fail the operation
+		fmt.Println("Error updating orders_by_user table:", err)
+	}
+
+	return nil
 }
 
 // AddItem adds an item to an order
@@ -304,7 +320,7 @@ func (r *CassandraOrderRepository) AddItem(ctx context.Context, orderID string, 
 	// Get current order
 	order, err := r.GetByID(ctx, orderID)
 	if err != nil {
-		return err
+		return r.errBuilder.Err(err)
 	}
 
 	// Add the item
@@ -312,7 +328,7 @@ func (r *CassandraOrderRepository) AddItem(ctx context.Context, orderID string, 
 
 	// Update the order
 	_, err = r.Update(ctx, order)
-	return err
+	return r.errBuilder.Err(err)
 }
 
 // RemoveItem removes an item from an order
@@ -320,17 +336,17 @@ func (r *CassandraOrderRepository) RemoveItem(ctx context.Context, orderID strin
 	// Get current order
 	order, err := r.GetByID(ctx, orderID)
 	if err != nil {
-		return err
+		return r.errBuilder.Err(err)
 	}
 
 	// Remove the item
 	if !order.RemoveItem(productID) {
-		return entity.ErrItemNotFound
+		return r.errBuilder.Err(entity.ErrItemNotFound)
 	}
 
 	// Update the order
 	_, err = r.Update(ctx, order)
-	return err
+	return r.errBuilder.Err(err)
 }
 
 // UpdateItemQuantity updates the quantity of an item in an order
@@ -338,17 +354,17 @@ func (r *CassandraOrderRepository) UpdateItemQuantity(ctx context.Context, order
 	// Get current order
 	order, err := r.GetByID(ctx, orderID)
 	if err != nil {
-		return err
+		return r.errBuilder.Err(err)
 	}
 
 	// Update item quantity
 	if !order.UpdateItemQuantity(productID, quantity) {
-		return entity.ErrItemNotFound
+		return r.errBuilder.Err(entity.ErrItemNotFound)
 	}
 
 	// Update the order
 	_, err = r.Update(ctx, order)
-	return err
+	return r.errBuilder.Err(err)
 }
 
 // ApplyDiscount applies a discount to an order
@@ -356,7 +372,7 @@ func (r *CassandraOrderRepository) ApplyDiscount(ctx context.Context, orderID st
 	// Get current order
 	order, err := r.GetByID(ctx, orderID)
 	if err != nil {
-		return err
+		return r.errBuilder.Err(err)
 	}
 
 	// Apply the discount
@@ -364,5 +380,5 @@ func (r *CassandraOrderRepository) ApplyDiscount(ctx context.Context, orderID st
 
 	// Update the order
 	_, err = r.Update(ctx, order)
-	return err
+	return r.errBuilder.Err(err)
 }

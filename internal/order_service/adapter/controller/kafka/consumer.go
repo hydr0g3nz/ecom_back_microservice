@@ -4,33 +4,40 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/usecase/command"
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/usecase"
+	"github.com/hydr0g3nz/ecom_back_microservice/pkg/logger"
 	"github.com/segmentio/kafka-go"
+)
+
+// Topic names
+const (
+	TopicInventory = "inventory"
+	TopicPayments  = "payments"
 )
 
 // KafkaConsumer handles consuming events from Kafka
 type KafkaConsumer struct {
-	inventoryReader       *kafka.Reader
-	paymentReader         *kafka.Reader
-	cancelOrderUsecase    command.CancelOrderUsecase
-	processPaymentUsecase command.ProcessPaymentUsecase
-	updateShippingUsecase command.UpdateShippingUsecase
+	inventoryReader *kafka.Reader
+	paymentReader   *kafka.Reader
+	orderUsecase    usecase.OrderUsecase
+	paymentUsecase  usecase.PaymentUsecase
+	logger          logger.Logger
 }
 
 // NewKafkaConsumer creates a new instance of KafkaConsumer
 func NewKafkaConsumer(
 	brokers []string,
-	cancelOrderUsecase command.CancelOrderUsecase,
-	processPaymentUsecase command.ProcessPaymentUsecase,
-	updateShippingUsecase command.UpdateShippingUsecase,
+	groupID string,
+	orderUsecase usecase.OrderUsecase,
+	paymentUsecase usecase.PaymentUsecase,
+	logger logger.Logger,
 ) *KafkaConsumer {
 	inventoryReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     brokers,
-		Topic:       "inventory",
-		GroupID:     "order-service-inventory",
+		Topic:       TopicInventory,
+		GroupID:     groupID + "-inventory",
 		MinBytes:    10e3, // 10KB
 		MaxBytes:    10e6, // 10MB
 		MaxWait:     time.Second,
@@ -39,8 +46,8 @@ func NewKafkaConsumer(
 
 	paymentReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     brokers,
-		Topic:       "payments",
-		GroupID:     "order-service-payments",
+		Topic:       TopicPayments,
+		GroupID:     groupID + "-payments",
 		MinBytes:    10e3, // 10KB
 		MaxBytes:    10e6, // 10MB
 		MaxWait:     time.Second,
@@ -48,11 +55,11 @@ func NewKafkaConsumer(
 	})
 
 	return &KafkaConsumer{
-		inventoryReader:       inventoryReader,
-		paymentReader:         paymentReader,
-		cancelOrderUsecase:    cancelOrderUsecase,
-		processPaymentUsecase: processPaymentUsecase,
-		updateShippingUsecase: updateShippingUsecase,
+		inventoryReader: inventoryReader,
+		paymentReader:   paymentReader,
+		orderUsecase:    orderUsecase,
+		paymentUsecase:  paymentUsecase,
+		logger:          logger,
 	}
 }
 
@@ -60,11 +67,13 @@ func NewKafkaConsumer(
 func (c *KafkaConsumer) Start(ctx context.Context) {
 	// Start inventory consumer
 	go func() {
+		c.logger.Info("Starting inventory events consumer")
 		c.consumeInventoryEvents(ctx)
 	}()
 
 	// Start payment consumer
 	go func() {
+		c.logger.Info("Starting payment events consumer")
 		c.consumePaymentEvents(ctx)
 	}()
 }
@@ -87,18 +96,19 @@ func (c *KafkaConsumer) consumeInventoryEvents(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			c.logger.Info("Shutting down inventory events consumer")
 			return
 		default:
 			m, err := c.inventoryReader.ReadMessage(ctx)
 			if err != nil {
-				log.Printf("Error reading message from inventory topic: %v", err)
+				c.logger.Error("Error reading message from inventory topic", "error", err)
 				continue
 			}
 
 			// Process the message
 			err = c.handleInventoryEvent(ctx, m)
 			if err != nil {
-				log.Printf("Error handling inventory event: %v", err)
+				c.logger.Error("Error handling inventory event", "error", err)
 			}
 		}
 	}
@@ -109,18 +119,19 @@ func (c *KafkaConsumer) consumePaymentEvents(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			c.logger.Info("Shutting down payment events consumer")
 			return
 		default:
 			m, err := c.paymentReader.ReadMessage(ctx)
 			if err != nil {
-				log.Printf("Error reading message from payment topic: %v", err)
+				c.logger.Error("Error reading message from payment topic", "error", err)
 				continue
 			}
 
 			// Process the message
 			err = c.handlePaymentEvent(ctx, m)
 			if err != nil {
-				log.Printf("Error handling payment event: %v", err)
+				c.logger.Error("Error handling payment event", "error", err)
 			}
 		}
 	}
@@ -139,9 +150,13 @@ func (c *KafkaConsumer) handleInventoryEvent(ctx context.Context, msg kafka.Mess
 		return fmt.Errorf("missing event_type in inventory event")
 	}
 
+	c.logger.Info("Received inventory event", "type", eventType)
+
 	switch eventType {
 	case "stock_unavailable":
 		return c.handleStockUnavailable(ctx, event)
+	case "stock_reserved":
+		return c.handleStockReserved(ctx, event)
 	// Add more event types as needed
 	default:
 		return fmt.Errorf("unknown inventory event type: %s", eventType)
@@ -160,6 +175,8 @@ func (c *KafkaConsumer) handlePaymentEvent(ctx context.Context, msg kafka.Messag
 	if !ok {
 		return fmt.Errorf("missing event_type in payment event")
 	}
+
+	c.logger.Info("Received payment event", "type", eventType)
 
 	switch eventType {
 	case "payment_successful":
@@ -184,8 +201,16 @@ func (c *KafkaConsumer) handleStockUnavailable(ctx context.Context, event map[st
 		reason = eventReason
 	}
 
-	// Cancel the order
-	return c.cancelOrderUsecase.Execute(ctx, orderID, reason)
+	// Cancel the order using the order usecase
+	return c.orderUsecase.CancelOrder(ctx, orderID, reason)
+}
+
+// handleStockReserved handles a stock_reserved event
+func (c *KafkaConsumer) handleStockReserved(ctx context.Context, event map[string]interface{}) error {
+	// This is just a placeholder for demonstration
+	// In a real implementation, you might update the order status or trigger another action
+	c.logger.Info("Stock reserved for order", "event", event)
+	return nil
 }
 
 // handlePaymentSuccessful handles a payment_successful event
@@ -202,7 +227,7 @@ func (c *KafkaConsumer) handlePaymentSuccessful(ctx context.Context, event map[s
 	}
 
 	// Build payment input from event data
-	paymentInput := command.ProcessPaymentInput{
+	paymentInput := usecase.ProcessPaymentInput{
 		OrderID:         orderID,
 		Amount:          amount,
 		Currency:        getStringOrDefault(event, "currency", "USD"),
@@ -211,8 +236,8 @@ func (c *KafkaConsumer) handlePaymentSuccessful(ctx context.Context, event map[s
 		GatewayResponse: getStringOrDefault(event, "gateway_response", ""),
 	}
 
-	// Process the payment
-	_, err := c.processPaymentUsecase.Execute(ctx, paymentInput)
+	// Process the payment using the payment usecase
+	_, err := c.paymentUsecase.ProcessPayment(ctx, paymentInput)
 	return err
 }
 
@@ -228,8 +253,8 @@ func (c *KafkaConsumer) handlePaymentFailed(ctx context.Context, event map[strin
 		reason = eventReason
 	}
 
-	// Cancel the order
-	return c.cancelOrderUsecase.Execute(ctx, orderID, reason)
+	// Cancel the order using the order usecase
+	return c.orderUsecase.CancelOrder(ctx, orderID, reason)
 }
 
 // getStringOrDefault gets a string value from a map or returns a default value

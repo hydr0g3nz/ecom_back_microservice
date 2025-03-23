@@ -13,47 +13,34 @@ import (
 	pb "github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/adapter/controller/grpc/proto"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/entity"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/valueobject"
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/usecase/command"
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/usecase/query"
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/usecase"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/logger"
 )
 
 // OrderServer implements the gRPC OrderService interface
 type OrderServer struct {
 	pb.UnimplementedOrderServiceServer
-	createOrderUsecase    command.CreateOrderUsecase
-	updateOrderUsecase    command.UpdateOrderUsecase
-	cancelOrderUsecase    command.CancelOrderUsecase
-	processPaymentUsecase command.ProcessPaymentUsecase
-	updateShippingUsecase command.UpdateShippingUsecase
-	getOrderUsecase       query.GetOrderUsecase
-	listOrdersUsecase     query.ListOrdersUsecase
-	orderHistoryUsecase   query.OrderHistoryUsecase
-	logger                logger.Logger
+	orderUsecase        usecase.OrderUsecase
+	paymentUsecase      usecase.PaymentUsecase
+	shippingUsecase     usecase.ShippingUsecase
+	orderHistoryUsecase usecase.OrderHistoryUsecase
+	logger              logger.Logger
 }
 
 // NewOrderServer creates a new OrderServer instance
 func NewOrderServer(
-	createOrderUsecase command.CreateOrderUsecase,
-	updateOrderUsecase command.UpdateOrderUsecase,
-	cancelOrderUsecase command.CancelOrderUsecase,
-	processPaymentUsecase command.ProcessPaymentUsecase,
-	updateShippingUsecase command.UpdateShippingUsecase,
-	getOrderUsecase query.GetOrderUsecase,
-	listOrdersUsecase query.ListOrdersUsecase,
-	orderHistoryUsecase query.OrderHistoryUsecase,
+	orderUsecase usecase.OrderUsecase,
+	paymentUsecase usecase.PaymentUsecase,
+	shippingUsecase usecase.ShippingUsecase,
+	orderHistoryUsecase usecase.OrderHistoryUsecase,
 	logger logger.Logger,
 ) *OrderServer {
 	return &OrderServer{
-		createOrderUsecase:    createOrderUsecase,
-		updateOrderUsecase:    updateOrderUsecase,
-		cancelOrderUsecase:    cancelOrderUsecase,
-		processPaymentUsecase: processPaymentUsecase,
-		updateShippingUsecase: updateShippingUsecase,
-		getOrderUsecase:       getOrderUsecase,
-		listOrdersUsecase:     listOrdersUsecase,
-		orderHistoryUsecase:   orderHistoryUsecase,
-		logger:                logger,
+		orderUsecase:        orderUsecase,
+		paymentUsecase:      paymentUsecase,
+		shippingUsecase:     shippingUsecase,
+		orderHistoryUsecase: orderHistoryUsecase,
+		logger:              logger,
 	}
 }
 
@@ -74,7 +61,7 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 		}
 	}
 
-	input := command.CreateOrderInput{
+	input := usecase.CreateOrderInput{
 		UserID: req.UserId,
 		Items:  items,
 		ShippingAddress: entity.Address{
@@ -105,7 +92,7 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 		PromotionCodes: req.PromotionCodes,
 	}
 
-	order, err := s.createOrderUsecase.Execute(ctx, input)
+	order, err := s.orderUsecase.CreateOrder(ctx, input)
 	if err != nil {
 		s.logger.Error("Failed to create order", "error", err)
 		return nil, handleError(err)
@@ -118,7 +105,7 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 func (s *OrderServer) GetOrder(ctx context.Context, req *pb.GetOrderRequest) (*pb.OrderResponse, error) {
 	s.logger.Info("gRPC GetOrder request received", "id", req.Id)
 
-	order, err := s.getOrderUsecase.Execute(ctx, req.Id)
+	order, err := s.orderUsecase.GetOrder(ctx, req.Id)
 	if err != nil {
 		s.logger.Error("Failed to get order", "error", err)
 		return nil, handleError(err)
@@ -171,13 +158,13 @@ func (s *OrderServer) UpdateOrder(ctx context.Context, req *pb.UpdateOrderReques
 		notes = &req.Notes
 	}
 
-	input := command.UpdateOrderInput{
+	input := usecase.UpdateOrderInput{
 		Notes:           notes,
 		ShippingAddress: shippingAddress,
 		BillingAddress:  billingAddress,
 	}
 
-	order, err := s.updateOrderUsecase.Execute(ctx, req.Id, input)
+	order, err := s.orderUsecase.UpdateOrder(ctx, req.Id, input)
 	if err != nil {
 		s.logger.Error("Failed to update order", "error", err)
 		return nil, handleError(err)
@@ -190,7 +177,7 @@ func (s *OrderServer) UpdateOrder(ctx context.Context, req *pb.UpdateOrderReques
 func (s *OrderServer) CancelOrder(ctx context.Context, req *pb.CancelOrderRequest) (*emptypb.Empty, error) {
 	s.logger.Info("gRPC CancelOrder request received", "id", req.Id)
 
-	err := s.cancelOrderUsecase.Execute(ctx, req.Id, req.Reason)
+	err := s.orderUsecase.CancelOrder(ctx, req.Id, req.Reason)
 	if err != nil {
 		s.logger.Error("Failed to cancel order", "error", err)
 		return nil, handleError(err)
@@ -213,7 +200,7 @@ func (s *OrderServer) ListOrdersByUser(ctx context.Context, req *pb.ListOrdersBy
 		pageSize = 10
 	}
 
-	orders, total, err := s.listOrdersUsecase.ListByUser(ctx, req.UserId, page, pageSize)
+	orders, total, err := s.orderUsecase.ListByUser(ctx, req.UserId, page, pageSize)
 	if err != nil {
 		s.logger.Error("Failed to list orders by user", "error", err)
 		return nil, handleError(err)
@@ -241,7 +228,7 @@ func (s *OrderServer) ListOrdersByStatus(ctx context.Context, req *pb.ListOrders
 		pageSize = 10
 	}
 
-	orders, total, err := s.listOrdersUsecase.ListByStatus(ctx, status, page, pageSize)
+	orders, total, err := s.orderUsecase.ListByStatus(ctx, status, page, pageSize)
 	if err != nil {
 		s.logger.Error("Failed to list orders by status", "error", err)
 		return nil, handleError(err)
@@ -294,7 +281,7 @@ func (s *OrderServer) SearchOrders(ctx context.Context, req *pb.SearchOrdersRequ
 		pageSize = 10
 	}
 
-	orders, total, err := s.listOrdersUsecase.Search(ctx, criteria, page, pageSize)
+	orders, total, err := s.orderUsecase.Search(ctx, criteria, page, pageSize)
 	if err != nil {
 		s.logger.Error("Failed to search orders", "error", err)
 		return nil, handleError(err)
@@ -336,7 +323,7 @@ func (s *OrderServer) GetOrderHistory(ctx context.Context, req *pb.GetOrderHisto
 func (s *OrderServer) ProcessPayment(ctx context.Context, req *pb.ProcessPaymentRequest) (*pb.PaymentResponse, error) {
 	s.logger.Info("gRPC ProcessPayment request received", "order_id", req.OrderId)
 
-	input := command.ProcessPaymentInput{
+	input := usecase.ProcessPaymentInput{
 		OrderID:         req.OrderId,
 		Amount:          req.Amount,
 		Currency:        req.Currency,
@@ -345,7 +332,7 @@ func (s *OrderServer) ProcessPayment(ctx context.Context, req *pb.ProcessPayment
 		GatewayResponse: req.GatewayResponse,
 	}
 
-	payment, err := s.processPaymentUsecase.Execute(ctx, input)
+	payment, err := s.paymentUsecase.ProcessPayment(ctx, input)
 	if err != nil {
 		s.logger.Error("Failed to process payment", "error", err)
 		return nil, handleError(err)
@@ -369,7 +356,7 @@ func (s *OrderServer) UpdateShipping(ctx context.Context, req *pb.UpdateShipping
 		estimatedDelivery = &t
 	}
 
-	input := command.UpdateShippingInput{
+	input := usecase.UpdateShippingInput{
 		OrderID:           req.OrderId,
 		Carrier:           req.Carrier,
 		TrackingNumber:    req.TrackingNumber,
@@ -380,7 +367,7 @@ func (s *OrderServer) UpdateShipping(ctx context.Context, req *pb.UpdateShipping
 		Notes:             req.Notes,
 	}
 
-	shipping, err := s.updateShippingUsecase.Execute(ctx, input)
+	shipping, err := s.shippingUsecase.UpdateShipping(ctx, input)
 	if err != nil {
 		s.logger.Error("Failed to update shipping", "error", err)
 		return nil, handleError(err)
@@ -393,29 +380,13 @@ func (s *OrderServer) UpdateShipping(ctx context.Context, req *pb.UpdateShipping
 func (s *OrderServer) GetShipping(ctx context.Context, req *pb.GetShippingRequest) (*pb.ShippingResponse, error) {
 	s.logger.Info("gRPC GetShipping request received", "order_id", req.OrderId)
 
-	// This should use a proper query usecase
-	// We'd need to add a GetShippingUsecase to the OrderServer struct
-	// For now, we'll modify this to retrieve the order first and then check its shipping ID
-
-	order, err := s.getOrderUsecase.Execute(ctx, req.OrderId)
+	shipping, err := s.shippingUsecase.GetShippingByOrderID(ctx, req.OrderId)
 	if err != nil {
-		s.logger.Error("Failed to get order for shipping information", "error", err)
+		s.logger.Error("Failed to get shipping information", "error", err)
 		return nil, handleError(err)
 	}
 
-	if order.ShippingID == "" {
-		return nil, status.Error(codes.NotFound, "Shipping information not found for this order")
-	}
-
-	// In a real implementation, this would call a ShippingUsecase
-	// For now, return a placeholder response
-	return &pb.ShippingResponse{
-		Id:        "shipping-not-implemented",
-		OrderId:   req.OrderId,
-		Status:    "pending",
-		CreatedAt: timestamppb.New(time.Now()),
-		UpdatedAt: timestamppb.New(time.Now()),
-	}, nil
+	return convertShippingToProto(shipping), nil
 }
 
 // Helper functions

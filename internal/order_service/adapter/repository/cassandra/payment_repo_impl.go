@@ -2,6 +2,7 @@ package cassandra
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -9,16 +10,21 @@ import (
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/adapter/repository/cassandra/model"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/entity"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/valueobject"
+	"github.com/hydr0g3nz/ecom_back_microservice/pkg/utils"
 )
 
 // CassandraPaymentRepository implements the PaymentRepository interface using Cassandra
 type CassandraPaymentRepository struct {
-	session *gocql.Session
+	session    *gocql.Session
+	errBuilder *utils.ErrorBuilder
 }
 
 // NewCassandraPaymentRepository creates a new instance of CassandraPaymentRepository
 func NewCassandraPaymentRepository(session *gocql.Session) *CassandraPaymentRepository {
-	return &CassandraPaymentRepository{session: session}
+	return &CassandraPaymentRepository{
+		session:    session,
+		errBuilder: utils.NewErrorBuilder("CassandraPaymentRepository"),
+	}
 }
 
 // Create stores a new payment
@@ -36,7 +42,7 @@ func (r *CassandraPaymentRepository) Create(ctx context.Context, payment *entity
 	// Convert to model
 	paymentModel, err := model.FromPaymentEntity(payment)
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
 	// Insert into payments table
@@ -63,7 +69,7 @@ func (r *CassandraPaymentRepository) Create(ctx context.Context, payment *entity
 	).WithContext(ctx).Exec()
 
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
 	return payment, nil
@@ -73,7 +79,7 @@ func (r *CassandraPaymentRepository) Create(ctx context.Context, payment *entity
 func (r *CassandraPaymentRepository) GetByID(ctx context.Context, id string) (*entity.Payment, error) {
 	paymentID, err := gocql.ParseUUID(id)
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(entity.ErrInvalidOrderData)
 	}
 
 	var paymentModel model.PaymentModel
@@ -102,19 +108,24 @@ func (r *CassandraPaymentRepository) GetByID(ctx context.Context, id string) (*e
 
 	if err != nil {
 		if err == gocql.ErrNotFound {
-			return nil, entity.ErrPaymentNotFound
+			return nil, r.errBuilder.Err(entity.ErrPaymentNotFound)
 		}
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
-	return paymentModel.ToEntity()
+	paymentEntity, err := paymentModel.ToEntity()
+	if err != nil {
+		return nil, r.errBuilder.Err(err)
+	}
+
+	return paymentEntity, nil
 }
 
 // GetByOrderID retrieves payments for an order
 func (r *CassandraPaymentRepository) GetByOrderID(ctx context.Context, orderID string) ([]*entity.Payment, error) {
 	id, err := gocql.ParseUUID(orderID)
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(entity.ErrInvalidOrderData)
 	}
 
 	query := `
@@ -146,13 +157,13 @@ func (r *CassandraPaymentRepository) GetByOrderID(ctx context.Context, orderID s
 	) {
 		payment, err := paymentModel.ToEntity()
 		if err != nil {
-			return nil, err
+			return nil, r.errBuilder.Err(err)
 		}
 		payments = append(payments, payment)
 	}
 
 	if err := iter.Close(); err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
 	return payments, nil
@@ -166,7 +177,7 @@ func (r *CassandraPaymentRepository) Update(ctx context.Context, payment *entity
 	// Convert to model
 	paymentModel, err := model.FromPaymentEntity(payment)
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
 	// Update payment
@@ -191,7 +202,7 @@ func (r *CassandraPaymentRepository) Update(ctx context.Context, payment *entity
 	).WithContext(ctx).Exec()
 
 	if err != nil {
-		return nil, err
+		return nil, r.errBuilder.Err(err)
 	}
 
 	return payment, nil
@@ -199,15 +210,10 @@ func (r *CassandraPaymentRepository) Update(ctx context.Context, payment *entity
 
 // UpdateStatus updates the status of a payment
 func (r *CassandraPaymentRepository) UpdateStatus(ctx context.Context, id string, status valueobject.PaymentStatus) error {
-	// paymentID, err := gocql.ParseUUID(id)
-	// if err != nil {
-	// 	return err
-	// }
-
 	// Get current payment to update timestamps appropriately
 	payment, err := r.GetByID(ctx, id)
 	if err != nil {
-		return err
+		return r.errBuilder.Err(err)
 	}
 
 	// Update status and timestamps
@@ -215,5 +221,6 @@ func (r *CassandraPaymentRepository) UpdateStatus(ctx context.Context, id string
 
 	// Update the payment
 	_, err = r.Update(ctx, payment)
-	return err
+	fmt.Println("err", err)
+	return r.errBuilder.Err(err)
 }
