@@ -252,6 +252,7 @@ func (r *CassandraOrderRepository) UpdateStatus(ctx context.Context, id string, 
 
 	// Verify valid status transition
 	if !valueobject.IsValidTransition(currentOrder.Status, status) {
+		fmt.Println("status ", status, "currentOrder.Status", currentOrder.Status)
 		return r.errBuilder.Err(entity.ErrInvalidOrderStatus)
 	}
 
@@ -273,9 +274,9 @@ func (r *CassandraOrderRepository) UpdateStatus(ctx context.Context, id string, 
 		WHERE id = ?
 		IF version = ?
 	`
-
-	applied := false
-	_, err = r.session.Query(query,
+	fmt.Println("version", currentOrder.Version, "newVersion", newVersion)
+	// applied := false
+	applied, err := r.session.Query(query,
 		status.String(),
 		now,
 		completedAt,
@@ -283,7 +284,7 @@ func (r *CassandraOrderRepository) UpdateStatus(ctx context.Context, id string, 
 		newVersion,
 		orderID,
 		currentOrder.Version,
-	).WithContext(ctx).ScanCAS(&applied)
+	).WithContext(ctx).ScanCAS()
 
 	if err != nil {
 		return r.errBuilder.Err(err)

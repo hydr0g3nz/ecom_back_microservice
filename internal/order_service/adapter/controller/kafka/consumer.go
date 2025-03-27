@@ -92,23 +92,38 @@ func (c *KafkaConsumer) Close() error {
 }
 
 // consumeInventoryEvents consumes events from the inventory topic
+// In consumer.go, add more detailed logging
 func (c *KafkaConsumer) consumeInventoryEvents(ctx context.Context) {
+	c.logger.Info("Starting inventory events consumer")
+	messageCount := 0
+	errorCount := 0
+
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Info("Shutting down inventory events consumer")
+			c.logger.Info("Shutting down inventory events consumer",
+				"messages_processed", messageCount,
+				"errors", errorCount)
 			return
 		default:
 			m, err := c.inventoryReader.ReadMessage(ctx)
 			if err != nil {
-				c.logger.Error("Error reading message from inventory topic", "error", err)
+				errorCount++
+				c.logger.Error("Error reading message from inventory topic",
+					"error", err, "total_errors", errorCount)
 				continue
 			}
+
+			messageCount++
+			c.logger.Debug("Message received", "topic", m.Topic, "partition", m.Partition,
+				"offset", m.Offset, "total_received", messageCount)
 
 			// Process the message
 			err = c.handleInventoryEvent(ctx, m)
 			if err != nil {
-				c.logger.Error("Error handling inventory event", "error", err)
+				errorCount++
+				c.logger.Error("Error handling inventory event",
+					"error", err, "total_errors", errorCount)
 			}
 		}
 	}
@@ -116,22 +131,36 @@ func (c *KafkaConsumer) consumeInventoryEvents(ctx context.Context) {
 
 // consumePaymentEvents consumes events from the payment topic
 func (c *KafkaConsumer) consumePaymentEvents(ctx context.Context) {
+	c.logger.Info("Starting payment events consumer")
+	messageCount := 0
+	errorCount := 0
+
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Info("Shutting down payment events consumer")
+			c.logger.Info("Shutting down payment events consumer",
+				"messages_processed", messageCount,
+				"errors", errorCount)
 			return
 		default:
 			m, err := c.paymentReader.ReadMessage(ctx)
 			if err != nil {
-				c.logger.Error("Error reading message from payment topic", "error", err)
+				errorCount++
+				c.logger.Error("Error reading message from payment topic",
+					"error", err, "total_errors", errorCount)
 				continue
 			}
+
+			messageCount++
+			c.logger.Debug("Message received", "topic", m.Topic, "partition", m.Partition,
+				"offset", m.Offset, "total_received", messageCount)
 
 			// Process the message
 			err = c.handlePaymentEvent(ctx, m)
 			if err != nil {
-				c.logger.Error("Error handling payment event", "error", err)
+				errorCount++
+				c.logger.Error("Error handling payment event",
+					"error", err, "total_errors", errorCount)
 			}
 		}
 	}
