@@ -3,136 +3,147 @@ package command
 import (
 	"context"
 	"encoding/json"
-	"time"
+	"errors"
 
-	"github.com/google/uuid"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/entity"
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/event"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/repository"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/valueobject"
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/event/publisher"
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/usecase/dto"
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/usecase/mapper"
 )
 
 // ProcessPaymentUsecase defines the interface for processing a payment
 type ProcessPaymentUsecase interface {
-	Execute(ctx context.Context, input ProcessPaymentInput) (*entity.Payment, error)
-}
-
-// ProcessPaymentInput contains the data needed to process a payment
-type ProcessPaymentInput struct {
-	OrderID         string  `json:"order_id"`
-	Amount          float64 `json:"amount"`
-	Currency        string  `json:"currency"`
-	Method          string  `json:"method"`
-	TransactionID   string  `json:"transaction_id"`
-	GatewayResponse string  `json:"gateway_response"`
+	Execute(ctx context.Context, input dto.ProcessPaymentInput) (dto.PaymentDTO, error)
 }
 
 // processPaymentUsecase implements the ProcessPaymentUsecase interface
 type processPaymentUsecase struct {
-	orderRepo      repository.OrderRepository
-	paymentRepo    repository.PaymentRepository
-	orderEventRepo repository.OrderEventRepository
-	eventPublisher publisher.OrderEventPublisher
+	unitOfWork     repository.UnitOfWork
+	idGenerator    valueobject.IDGenerator
+	timeProvider   valueobject.TimeProvider
+	eventPublisher event.Publisher
 }
 
 // NewProcessPaymentUsecase creates a new instance of processPaymentUsecase
 func NewProcessPaymentUsecase(
-	orderRepo repository.OrderRepository,
-	paymentRepo repository.PaymentRepository,
-	orderEventRepo repository.OrderEventRepository,
-	eventPublisher publisher.OrderEventPublisher,
+	unitOfWork repository.UnitOfWork,
+	idGenerator valueobject.IDGenerator,
+	timeProvider valueobject.TimeProvider,
+	eventPublisher event.Publisher,
 ) ProcessPaymentUsecase {
 	return &processPaymentUsecase{
-		orderRepo:      orderRepo,
-		paymentRepo:    paymentRepo,
-		orderEventRepo: orderEventRepo,
+		unitOfWork:     unitOfWork,
+		idGenerator:    idGenerator,
+		timeProvider:   timeProvider,
 		eventPublisher: eventPublisher,
 	}
 }
 
 // Execute processes a payment for an order
-func (uc *processPaymentUsecase) Execute(ctx context.Context, input ProcessPaymentInput) (*entity.Payment, error) {
-	// Get the existing order
-	order, err := uc.orderRepo.GetByID(ctx, input.OrderID)
-	if err != nil {
-		return nil, err
+func (uc *processPaymentUsecase) Execute(ctx context.Context, input dto.ProcessPaymentInput) (dto.PaymentDTO, error) {
+	var paymentDTO dto.PaymentDTO
+
+	// Validate input
+	if input.OrderID == "" {
+		return paymentDTO, errors.New("order ID is required")
+	}
+	if input.Amount <= 0 {
+		return paymentDTO, errors.New("payment amount must be positive")
+	}
+	if input.Currency == "" {
+		return paymentDTO, errors.New("currency is required")
+	}
+	if input.Method == "" {
+		return paymentDTO, errors.New("payment method is required")
 	}
 
-	// Validate payment amount
-	if input.Amount != order.TotalAmount {
-		return nil, entity.ErrInvalidOrderData
-	}
+	// Run in transaction
+	err := uc.unitOfWork.RunInTransaction(ctx, func(txCtx context.Context) error {
+		// Get repositories
+		orderRepo := uc.unitOfWork.GetOrderRepository(txCtx)
+		paymentRepo := uc.unitOfWork.GetPaymentRepository(txCtx)
+		orderEventRepo := uc.unitOfWork.GetOrderEventRepository(txCtx)
 
-	// Create payment entity
-	payment := &entity.Payment{
-		ID:              uuid.New().String(),
-		OrderID:         input.OrderID,
-		Amount:          input.Amount,
-		Currency:        input.Currency,
-		Method:          input.Method,
-		Status:          valueobject.PaymentStatusCompleted,
-		TransactionID:   input.TransactionID,
-		GatewayResponse: input.GatewayResponse,
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
-		CompletedAt:     &time.Time{},
-	}
+		// Get the existing order
+		order, err := orderRepo.GetByID(txCtx, input.OrderID)
+		if err != nil {
+			return err
+		}
 
-	// Set completed time
-	now := time.Now()
-	payment.CompletedAt = &now
+		// Validate payment amount against order total
+		if input.Amount != order.TotalAmount {
+			return errors.New("payment amount doesn't match order total")
+		}
 
-	// Create the payment in the repository
-	createdPayment, err := uc.paymentRepo.Create(ctx, payment)
-	if err != nil {
-		return nil, err
-	}
+		// Create payment entity
+		payment, err := mapper.CreatePaymentFromDTO(input, uc.idGenerator, uc.timeProvider)
+		if err != nil {
+			return err
+		}
 
-	// Update order status to payment completed and set payment ID
-	// First update order status
-	err = uc.orderRepo.UpdateStatus(ctx, order.ID, valueobject.PaymentCompleted)
-	if err != nil {
-		return nil, err
-	}
+		// Create the payment
+		createdPayment, err := paymentRepo.Create(txCtx, payment)
+		if err != nil {
+			return err
+		}
 
-	// Get updated order
-	updatedOrder, err := uc.orderRepo.GetByID(ctx, order.ID)
-	if err != nil {
-		return nil, err
-	}
+		// Update order status to payment completed
+		err = orderRepo.UpdateStatus(txCtx, order.ID.String(), valueobject.PaymentCompleted)
+		if err != nil {
+			return err
+		}
 
-	// Create and store the payment processed event
-	eventDataBytes, err := json.Marshal(map[string]interface{}{
-		"payment_id":     createdPayment.ID,
-		"amount":         createdPayment.Amount,
-		"currency":       createdPayment.Currency,
-		"method":         createdPayment.Method,
-		"transaction_id": createdPayment.TransactionID,
+		// Get the updated order
+		updatedOrder, err := orderRepo.GetByID(txCtx, input.OrderID)
+		if err != nil {
+			return err
+		}
+
+		// Create payment processed event
+		paymentData := entity.PaymentProcessedData{
+			Payment: *createdPayment,
+		}
+
+		eventDataBytes, err := json.Marshal(paymentData)
+		if err != nil {
+			return err
+		}
+
+		event, err := entity.NewOrderEvent(
+			uc.idGenerator.NewID(),
+			updatedOrder.ID,
+			entity.EventPaymentProcessed,
+			eventDataBytes,
+			updatedOrder.Version,
+			uc.timeProvider.Now(),
+			updatedOrder.UserID,
+		)
+		if err != nil {
+			return err
+		}
+
+		// Save the event
+		if err := orderEventRepo.SaveEvent(txCtx, event); err != nil {
+			return err
+		}
+
+		// Convert to DTO for response
+		paymentDTO = mapper.ToPaymentDTO(createdPayment)
+
+		// Publish event (outside the transaction)
+		domainEvent := entity.NewDomainEvent(event, paymentData)
+		go func() {
+			_ = uc.eventPublisher.Publish(context.Background(), domainEvent)
+		}()
+
+		return nil
 	})
+
 	if err != nil {
-		return nil, err
+		return dto.PaymentDTO{}, err
 	}
 
-	event := &entity.OrderEvent{
-		ID:        uuid.New().String(),
-		OrderID:   order.ID,
-		Type:      entity.EventPaymentProcessed,
-		Data:      eventDataBytes,
-		Version:   updatedOrder.Version,
-		Timestamp: time.Now(),
-		UserID:    updatedOrder.UserID,
-	}
-
-	err = uc.orderEventRepo.SaveEvent(ctx, event)
-	if err != nil {
-		return nil, err
-	}
-
-	// Publish the event
-	err = uc.eventPublisher.PublishPaymentProcessed(ctx, updatedOrder, createdPayment)
-	if err != nil {
-		// Log the error but don't fail the operation
-	}
-
-	return createdPayment, nil
+	return paymentDTO, nil
 }
