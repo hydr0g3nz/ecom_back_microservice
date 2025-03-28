@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package order;
+
+option go_package = "github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/adapter/controller/grpc/proto";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// Order service for handling order operations
+service OrderService {
+  // Create a new order
+  rpc CreateOrder(CreateOrderRequest) returns (OrderResponse) {}
+  
+  // Get order by ID
+  rpc GetOrder(GetOrderRequest) returns (OrderResponse) {}
+  
+  // Get orders for a specific user
+  rpc GetUserOrders(GetUserOrdersRequest) returns (OrderListResponse) {}
+  
+  // Update order status
+  rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (OrderResponse) {}
+  
+  // Process payment for an order
+  rpc ProcessPayment(ProcessPaymentRequest) returns (OrderResponse) {}
+  
+  // Cancel an order
+  rpc CancelOrder(CancelOrderRequest) returns (OrderResponse) {}
+  
+  // List orders with pagination and filtering
+  rpc ListOrders(ListOrdersRequest) returns (OrderListResponse) {}
+}
+
+// CreateOrderRequest represents a request to create a new order
+message CreateOrderRequest {
+  string user_id = 1;
+  repeated OrderItem items = 2;
+  string shipping_address = 3;
+}
+
+// OrderItem represents an item in an order
+message OrderItem {
+  string product_id = 1;
+  int32 quantity = 2;
+  double price = 3;
+}
+
+// GetOrderRequest represents a request to get an order by ID
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+// GetUserOrdersRequest represents a request to get orders for a specific user
+message GetUserOrdersRequest {
+  string user_id = 1;
+}
+
+// UpdateOrderStatusRequest represents a request to update an order's status
+message UpdateOrderStatusRequest {
+  string order_id = 1;
+  string status = 2;
+}
+
+// ProcessPaymentRequest represents a request to process payment for an order
+message ProcessPaymentRequest {
+  string order_id = 1;
+  string payment_id = 2;
+  double amount = 3;
+  string method = 4;
+}
+
+// CancelOrderRequest represents a request to cancel an order
+message CancelOrderRequest {
+  string order_id = 1;
+}
+
+// ListOrdersRequest represents a request to list orders with pagination and filtering
+message ListOrdersRequest {
+  string status = 1;
+  int32 page = 2;
+  int32 limit = 3;
+}
+
+// OrderResponse represents an order response
+message OrderResponse {
+  string id = 1;
+  string user_id = 2;
+  repeated OrderItemResponse items = 3;
+  double total_amount = 4;
+  string status = 5;
+  string shipping_address = 6;
+  string payment_id = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+// OrderItemResponse represents an item in an order response
+message OrderItemResponse {
+  string product_id = 1;
+  int32 quantity = 2;
+  double price = 3;
+  double total_price = 4;
+}
+
+// OrderListResponse represents a list of orders response with pagination
+message OrderListResponse {
+  repeated OrderResponse orders = 1;
+  int32 total_count = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
