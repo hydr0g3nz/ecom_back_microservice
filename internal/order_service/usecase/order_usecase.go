@@ -1,152 +1,384 @@
+// internal/order_service/usecase/order_usecase.go
 package usecase
 
 import (
 	"context"
 	"time"
-	
+
 	"github.com/google/uuid"
-	
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/entity"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/repository"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/service"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/valueobject"
+	"github.com/hydr0g3nz/ecom_back_microservice/pkg/utils"
 )
 
-// OrderUseCase is the main use case for order operations
-type OrderUseCase struct {
-	orderRepo    repository.OrderRepository
-	eventService *service.EventService
+type OrderUsecase interface {
+	// CreateOrder creates a new order
+	CreateOrder(ctx context.Context, order *entity.Order) (*entity.Order, error)
+
+	// GetOrderByID retrieves an order by ID
+	GetOrderByID(ctx context.Context, id string) (*entity.Order, error)
+
+	// GetOrdersByUserID retrieves orders for a specific user
+	GetOrdersByUserID(ctx context.Context, userID string, page, pageSize int) ([]*entity.Order, int, error)
+
+	// ListOrders retrieves a list of orders with optional filtering
+	ListOrders(ctx context.Context, page, pageSize int, filters map[string]interface{}) ([]*entity.Order, int, error)
+
+	// UpdateOrder updates an existing order
+	UpdateOrder(ctx context.Context, id string, order entity.Order) (*entity.Order, error)
+
+	// UpdateOrderStatus updates the status of an order
+	UpdateOrderStatus(ctx context.Context, id string, status valueobject.OrderStatus, comment string) (*entity.Order, error)
+
+	// CancelOrder cancels an order
+	CancelOrder(ctx context.Context, id string, reason string) (*entity.Order, error)
+
+	// ProcessInventoryReserved handles the event when inventory is reserved
+	ProcessInventoryReserved(ctx context.Context, orderID string, success bool, message string) (*entity.Order, error)
+
+	// ProcessPaymentCompleted handles the event when payment is completed
+	ProcessPaymentCompleted(ctx context.Context, orderID string, transactionID string, success bool) (*entity.Order, error)
+
+	// UpdateOrderPartial performs a partial update of an order
+	UpdateOrderPartial(ctx context.Context, id string, patch map[string]interface{}) (*entity.Order, error)
 }
 
-// NewOrderUseCase creates a new order use case
-func NewOrderUseCase(orderRepo repository.OrderRepository, eventService *service.EventService) *OrderUseCase {
-	return &OrderUseCase{
-		orderRepo:    orderRepo,
-		eventService: eventService,
+// orderUsecase implements the OrderUsecase interface
+type orderUsecase struct {
+	orderRepo    repository.OrderRepository
+	eventService service.EventService
+	errBuilder   *utils.ErrorBuilder
+}
+
+// NewOrderUsecase creates a new instance of OrderUsecase
+func NewOrderUsecase(
+	or repository.OrderRepository,
+	es service.EventService,
+) OrderUsecase {
+	return &orderUsecase{
+		orderRepo:    or,
+		eventService: es,
+		errBuilder:   utils.NewErrorBuilder("OrderUsecase"),
 	}
 }
 
 // CreateOrder creates a new order
-func (uc *OrderUseCase) CreateOrder(ctx context.Context, userID string, items []entity.OrderItem, shippingAddress string) (*entity.Order, error) {
-	// Validate input
-	if userID == "" {
-		return nil, entity.ErrInvalidUserID
+func (ou *orderUsecase) CreateOrder(ctx context.Context, order *entity.Order) (*entity.Order, error) {
+	// Validate order data
+	if err := order.ValidateOrder(); err != nil {
+		return nil, ou.errBuilder.Err(err)
 	}
-	
-	if len(items) == 0 {
-		return nil, entity.ErrEmptyOrderItems
+
+	// Generate ID if not provided
+	if order.ID == "" {
+		order.ID = uuid.New().String()
 	}
-	
-	// Create new order
-	order := entity.NewOrder(userID, items, shippingAddress)
-	order.ID = uuid.New().String()
-	
-	// Save to repository
-	if err := uc.orderRepo.Create(ctx, order); err != nil {
-		return nil, err
+
+	// Set initial status and timestamps
+	order.Status = valueobject.OrderStatusPending
+	order.CreatedAt = time.Now()
+	order.UpdatedAt = time.Now()
+
+	// Initialize status history
+	order.StatusHistory = []entity.OrderStatusHistoryItem{
+		{
+			Status:    valueobject.OrderStatusPending,
+			Timestamp: time.Now(),
+			Comment:   "Order created",
+		},
 	}
-	
-	// Publish event
-	if err := uc.eventService.PublishOrderCreated(ctx, order); err != nil {
-		// Log error but don't fail the operation
-		// TODO: implement proper logging
+
+	// Calculate total amount
+	order.CalculateTotalAmount()
+
+	// Create order in repository
+	createdOrder, err := ou.orderRepo.Create(ctx, *order)
+	if err != nil {
+		return nil, ou.errBuilder.Err(err)
 	}
-	
+
+	// Publish order created event
+	if err := ou.eventService.PublishOrderCreated(ctx, createdOrder); err != nil {
+		// Log error but continue
+		// In a real system, you might want to implement retry logic or compensating actions
+	}
+
+	// Request inventory reservation
+	if err := ou.eventService.PublishReserveInventory(ctx, createdOrder); err != nil {
+		// Log error but continue
+		// In a real system, you might want to implement retry logic
+	}
+
+	return createdOrder, nil
+}
+
+// GetOrderByID retrieves an order by ID
+func (ou *orderUsecase) GetOrderByID(ctx context.Context, id string) (*entity.Order, error) {
+	order, err := ou.orderRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, ou.errBuilder.Err(err)
+	}
 	return order, nil
 }
 
-// GetOrderByID gets an order by ID
-func (uc *OrderUseCase) GetOrderByID(ctx context.Context, id string) (*entity.Order, error) {
-	return uc.orderRepo.GetByID(ctx, id)
+// GetOrdersByUserID retrieves orders for a specific user
+func (ou *orderUsecase) GetOrdersByUserID(ctx context.Context, userID string, page, pageSize int) ([]*entity.Order, int, error) {
+	offset := (page - 1) * pageSize
+	orders, total, err := ou.orderRepo.GetByUserID(ctx, userID, offset, pageSize)
+	if err != nil {
+		return nil, 0, ou.errBuilder.Err(err)
+	}
+	return orders, total, nil
 }
 
-// GetOrdersByUserID gets all orders for a user
-func (uc *OrderUseCase) GetOrdersByUserID(ctx context.Context, userID string) ([]*entity.Order, error) {
-	return uc.orderRepo.GetByUserID(ctx, userID)
+// ListOrders retrieves a list of orders with optional filtering
+func (ou *orderUsecase) ListOrders(ctx context.Context, page, pageSize int, filters map[string]interface{}) ([]*entity.Order, int, error) {
+	offset := (page - 1) * pageSize
+	orders, total, err := ou.orderRepo.List(ctx, offset, pageSize, filters)
+	if err != nil {
+		return nil, 0, ou.errBuilder.Err(err)
+	}
+	return orders, total, nil
+}
+
+// UpdateOrder updates an existing order
+func (ou *orderUsecase) UpdateOrder(ctx context.Context, id string, order entity.Order) (*entity.Order, error) {
+	// Ensure the order exists
+	existingOrder, err := ou.orderRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, ou.errBuilder.Err(entity.ErrOrderNotFound)
+	}
+
+	// Preserve important fields from the existing order
+	order.ID = id
+	order.CreatedAt = existingOrder.CreatedAt
+	order.StatusHistory = existingOrder.StatusHistory
+	order.UpdatedAt = time.Now()
+
+	// Recalculate total amount
+	order.CalculateTotalAmount()
+
+	// Update the order
+	updatedOrder, err := ou.orderRepo.Update(ctx, order)
+	if err != nil {
+		return nil, ou.errBuilder.Err(err)
+	}
+
+	// Publish order updated event
+	if err := ou.eventService.PublishOrderUpdated(ctx, updatedOrder); err != nil {
+		// Log error but continue
+	}
+
+	return updatedOrder, nil
 }
 
 // UpdateOrderStatus updates the status of an order
-func (uc *OrderUseCase) UpdateOrderStatus(ctx context.Context, id string, status valueobject.OrderStatus) error {
-	// Validate status
-	if !status.IsValid() {
-		return entity.ErrInvalidOrderStatus
-	}
-	
-	// Get current order
-	order, err := uc.orderRepo.GetByID(ctx, id)
+func (ou *orderUsecase) UpdateOrderStatus(ctx context.Context, id string, status valueobject.OrderStatus, comment string) (*entity.Order, error) {
+	// Ensure the order exists
+	existingOrder, err := ou.orderRepo.GetByID(ctx, id)
 	if err != nil {
-		return err
+		return nil, ou.errBuilder.Err(entity.ErrOrderNotFound)
 	}
-	
-	// Save old status for event
-	oldStatus := string(order.Status)
-	
-	// Update status
-	if err := order.UpdateStatus(status); err != nil {
-		return err
-	}
-	
-	// Update in repository
-	if err := uc.orderRepo.Update(ctx, order); err != nil {
-		return err
-	}
-	
-	// Publish event
-	if err := uc.eventService.PublishOrderStatusChanged(ctx, order, oldStatus); err != nil {
-		// Log error but don't fail the operation
-		// TODO: implement proper logging
-	}
-	
-	return nil
-}
 
-// AddPaymentToOrder adds payment information to an order
-func (uc *OrderUseCase) AddPaymentToOrder(ctx context.Context, orderID, paymentID string) error {
-	// Get current order
-	order, err := uc.orderRepo.GetByID(ctx, orderID)
+	// Validate status transition
+	if !existingOrder.CanTransitionToStatus(status) {
+		return nil, ou.errBuilder.Err(entity.ErrInvalidStatusTransition)
+	}
+
+	// Update the order status
+	updatedOrder, err := ou.orderRepo.UpdateStatus(ctx, id, status, comment)
 	if err != nil {
-		return err
+		return nil, ou.errBuilder.Err(err)
 	}
-	
-	// Add payment ID
-	order.AddPaymentID(paymentID)
-	
-	// Update order status to paid
-	if err := order.UpdateStatus(valueobject.OrderStatusPaid); err != nil {
-		return err
+
+	// Publish appropriate events based on the new status
+	switch status {
+	case valueobject.OrderStatusCancelled:
+		ou.eventService.PublishOrderCancelled(ctx, updatedOrder)
+		ou.eventService.PublishReleaseInventory(ctx, updatedOrder)
+	case valueobject.OrderStatusCompleted:
+		ou.eventService.PublishOrderCompleted(ctx, updatedOrder)
+	case valueobject.OrderStatusProcessing:
+		// If transitioning to processing, request payment
+		if existingOrder.Status == valueobject.OrderStatusPending {
+			ou.eventService.PublishPaymentRequest(ctx, updatedOrder)
+		}
 	}
-	
-	// Update in repository
-	if err := uc.orderRepo.Update(ctx, order); err != nil {
-		return err
-	}
-	
-	return nil
+
+	return updatedOrder, nil
 }
 
 // CancelOrder cancels an order
-func (uc *OrderUseCase) CancelOrder(ctx context.Context, id string) error {
-	return uc.UpdateOrderStatus(ctx, id, valueobject.OrderStatusCancelled)
+func (ou *orderUsecase) CancelOrder(ctx context.Context, id string, reason string) (*entity.Order, error) {
+	return ou.UpdateOrderStatus(ctx, id, valueobject.OrderStatusCancelled, reason)
 }
 
-// ListOrdersByStatus lists orders by status
-func (uc *OrderUseCase) ListOrdersByStatus(ctx context.Context, status valueobject.OrderStatus) ([]*entity.Order, error) {
-	if !status.IsValid() {
-		return nil, entity.ErrInvalidOrderStatus
+// ProcessInventoryReserved handles the event when inventory is reserved
+func (ou *orderUsecase) ProcessInventoryReserved(ctx context.Context, orderID string, success bool, message string) (*entity.Order, error) {
+	// Get the order
+	order, err := ou.orderRepo.GetByID(ctx, orderID)
+	if err != nil {
+		return nil, ou.errBuilder.Err(err)
 	}
-	
-	return uc.orderRepo.ListByStatus(ctx, status)
+
+	// Update order based on inventory reservation result
+	if success {
+		// If inventory is successfully reserved and order is still pending, proceed to payment
+		if order.Status == valueobject.OrderStatusPending {
+			updatedOrder, err := ou.UpdateOrderStatus(ctx, orderID, valueobject.OrderStatusProcessing, "Inventory reserved successfully")
+			if err != nil {
+				return nil, ou.errBuilder.Err(err)
+			}
+
+			// Request payment processing
+			if err := ou.eventService.PublishPaymentRequest(ctx, updatedOrder); err != nil {
+				// Log error but continue
+			}
+
+			return updatedOrder, nil
+		}
+		return order, nil
+	} else {
+		// If inventory reservation failed, mark the order as failed
+		return ou.UpdateOrderStatus(ctx, orderID, valueobject.OrderStatusFailed, "Inventory reservation failed: "+message)
+	}
 }
 
-// GetOrdersPaginated gets orders with pagination
-func (uc *OrderUseCase) GetOrdersPaginated(ctx context.Context, page, pageSize int) ([]*entity.Order, int, error) {
-	if page < 1 {
-		page = 1
+// ProcessPaymentCompleted handles the event when payment is completed
+func (ou *orderUsecase) ProcessPaymentCompleted(ctx context.Context, orderID string, transactionID string, success bool) (*entity.Order, error) {
+	// Get the order
+	order, err := ou.orderRepo.GetByID(ctx, orderID)
+	if err != nil {
+		return nil, ou.errBuilder.Err(err)
 	}
-	
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 10
+
+	// Update order payment info
+	order.Payment.TransactionID = transactionID
+	order.Payment.PaidAt = utils.TimePtr(time.Now())
+
+	if success {
+		order.Payment.Status = "completed"
+		// Update order status to Shipped or other appropriate status
+		return ou.UpdateOrderStatus(ctx, orderID, valueobject.OrderStatusShipped, "Payment processed successfully")
+	} else {
+		order.Payment.Status = "failed"
+		// Mark order as failed and release inventory
+		updatedOrder, err := ou.UpdateOrderStatus(ctx, orderID, valueobject.OrderStatusFailed, "Payment failed")
+		if err != nil {
+			return nil, ou.errBuilder.Err(err)
+		}
+
+		// Release reserved inventory
+		if err := ou.eventService.PublishReleaseInventory(ctx, updatedOrder); err != nil {
+			// Log error but continue
+		}
+
+		return updatedOrder, nil
 	}
-	
-	return uc.orderRepo.GetOrdersPaginated(ctx, page, pageSize)
+}
+
+// UpdateOrderPartial performs a partial update of an order
+func (ou *orderUsecase) UpdateOrderPartial(ctx context.Context, id string, patch map[string]interface{}) (*entity.Order, error) {
+	// Get the existing order
+	existingOrder, err := ou.orderRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, ou.errBuilder.Err(entity.ErrOrderNotFound)
+	}
+
+	// Create a modifiable copy
+	updatedOrder := *existingOrder
+	updatedOrder.UpdatedAt = time.Now()
+
+	// Apply updates from patch
+	modified := false
+
+	// Handle status updates separately for proper validation and event publishing
+	if statusValue, ok := patch["status"]; ok {
+		if statusStr, ok := statusValue.(string); ok {
+			status, err := valueobject.ParseOrderStatus(statusStr)
+			if err == nil && existingOrder.CanTransitionToStatus(status) {
+				comment := "Status updated via API"
+				if commentValue, ok := patch["comment"]; ok {
+					if commentStr, ok := commentValue.(string); ok {
+						comment = commentStr
+					}
+				}
+
+				return ou.UpdateOrderStatus(ctx, id, status, comment)
+			}
+		}
+	}
+
+	// Handle shipping info updates
+	if shippingInfo, ok := patch["shipping_info"].(map[string]interface{}); ok {
+		if street, ok := shippingInfo["street"].(string); ok {
+			updatedOrder.ShippingInfo.Street = street
+			modified = true
+		}
+		if city, ok := shippingInfo["city"].(string); ok {
+			updatedOrder.ShippingInfo.City = city
+			modified = true
+		}
+		if state, ok := shippingInfo["state"].(string); ok {
+			updatedOrder.ShippingInfo.State = state
+			modified = true
+		}
+		if country, ok := shippingInfo["country"].(string); ok {
+			updatedOrder.ShippingInfo.Country = country
+			modified = true
+		}
+		if postalCode, ok := shippingInfo["postal_code"].(string); ok {
+			updatedOrder.ShippingInfo.PostalCode = postalCode
+			modified = true
+		}
+	}
+
+	// Handle billing info updates
+	if billingInfo, ok := patch["billing_info"].(map[string]interface{}); ok {
+		if street, ok := billingInfo["street"].(string); ok {
+			updatedOrder.BillingInfo.Street = street
+			modified = true
+		}
+		if city, ok := billingInfo["city"].(string); ok {
+			updatedOrder.BillingInfo.City = city
+			modified = true
+		}
+		if state, ok := billingInfo["state"].(string); ok {
+			updatedOrder.BillingInfo.State = state
+			modified = true
+		}
+		if country, ok := billingInfo["country"].(string); ok {
+			updatedOrder.BillingInfo.Country = country
+			modified = true
+		}
+		if postalCode, ok := billingInfo["postal_code"].(string); ok {
+			updatedOrder.BillingInfo.PostalCode = postalCode
+			modified = true
+		}
+	}
+
+	// Handle notes update
+	if notes, ok := patch["notes"].(string); ok {
+		updatedOrder.Notes = notes
+		modified = true
+	}
+
+	if !modified {
+		return existingOrder, nil
+	}
+
+	// Update the order
+	updatedOrder, err = ou.orderRepo.Update(ctx, updatedOrder)
+	if err != nil {
+		return nil, ou.errBuilder.Err(err)
+	}
+
+	// Publish order updated event
+	if err := ou.eventService.PublishOrderUpdated(ctx, updatedOrder); err != nil {
+		// Log error but continue
+	}
+
+	return updatedOrder, nil
 }

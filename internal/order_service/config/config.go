@@ -1,111 +1,140 @@
+// internal/order_service/config/config.go
 package config
 
 import (
+	"fmt"
 	"os"
-	"strconv"
-	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
-// Config holds all configuration for the service
+// Config holds all application configuration
 type Config struct {
+	Server   ServerConfig   `yaml:"server"`
+	Database DatabaseConfig `yaml:"database"`
+	GRPC     GRPCConfig     `yaml:"grpc"`
+	Kafka    KafkaConfig    `yaml:"kafka"`
+}
+
+// ServerConfig contains HTTP server configuration
+type ServerConfig struct {
+	Address      string        `yaml:"address"`
+	ReadTimeout  time.Duration `yaml:"readTimeout"`
+	WriteTimeout time.Duration `yaml:"writeTimeout"`
+	IdleTimeout  time.Duration `yaml:"idleTimeout"`
+}
+
+// DatabaseConfig contains MongoDB database configuration
+type DatabaseConfig struct {
+	URI         string        `yaml:"uri"`
+	Name        string        `yaml:"name"`
+	PoolSize    uint64        `yaml:"poolSize"`
+	ConnTimeout time.Duration `yaml:"connTimeout"`
+}
+
+// GRPCConfig contains gRPC server configuration
+type GRPCConfig struct {
+	Port string `yaml:"port"`
+}
+
+// KafkaConfig contains Kafka configuration
+type KafkaConfig struct {
+	Brokers string      `yaml:"brokers"`
+	GroupID string      `yaml:"groupId"`
+	Topics  KafkaTopics `yaml:"topics"`
+}
+
+// KafkaTopics contains Kafka topic configuration
+type KafkaTopics struct {
+	OrderEvents      string `yaml:"orderEvents"`
+	InventoryEvents  string `yaml:"inventoryEvents"`
+	PaymentEvents    string `yaml:"paymentEvents"`
+	InventoryResults string `yaml:"inventoryResults"`
+	PaymentResults   string `yaml:"paymentResults"`
+}
+
+// LoadConfig loads configuration from a YAML file
+func LoadConfig(configPath string) (*Config, error) {
+	// Set default configuration
+	config := &Config{
+		Server: ServerConfig{
+			Address:      "127.0.0.1:8082", // Different port from other services
+			ReadTimeout:  15 * time.Second,
+			WriteTimeout: 15 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		},
+		Database: DatabaseConfig{
+			URI:         "mongodb://localhost:27017",
+			Name:        "ecom_order_service",
+			PoolSize:    100,
+			ConnTimeout: 30 * time.Second,
+		},
+		GRPC: GRPCConfig{
+			Port: "50053", // Different port from other services
+		},
+		Kafka: KafkaConfig{
+			Brokers: "localhost:9092",
+			GroupID: "order-service",
+			Topics: KafkaTopics{
+				OrderEvents:      "order-events",
+				InventoryEvents:  "inventory-events",
+				PaymentEvents:    "payment-events",
+				InventoryResults: "inventory-events-result",
+				PaymentResults:   "payment-events-result",
+			},
+		},
+	}
+
+	// Read config file
+	file, err := os.ReadFile(configPath)
+	if err != nil {
+		// If no file exists, use defaults
+		if os.IsNotExist(err) {
+			return config, nil
+		}
+		return nil, fmt.Errorf("error reading config file: %w", err)
+	}
+
+	// Parse YAML
+	err = yaml.Unmarshal(file, config)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing config file: %w", err)
+	}
+
+	// Override with environment variables if they exist
+	config = overrideWithEnv(config)
+
+	return config, nil
+}
+
+// overrideWithEnv overrides config with environment variables
+func overrideWithEnv(config *Config) *Config {
 	// Server
-	ServerPort     int
-	GRPCServerPort int
-	
-	// MongoDB
-	MongoURI      string
-	MongoDB       string
-	MongoUser     string
-	MongoPassword string
-	
+	if value := os.Getenv("ORDER_SERVER_ADDR"); value != "" {
+		config.Server.Address = value
+	}
+
+	// Database
+	if value := os.Getenv("ORDER_DB_URI"); value != "" {
+		config.Database.URI = value
+	}
+	if value := os.Getenv("ORDER_DB_NAME"); value != "" {
+		config.Database.Name = value
+	}
+
+	// GRPC
+	if value := os.Getenv("ORDER_GRPC_PORT"); value != "" {
+		config.GRPC.Port = value
+	}
+
 	// Kafka
-	KafkaBrokers []string
-	KafkaGroupID string
-	
-	// JWT
-	JWTSecret    string
-	JWTExpiresIn time.Duration
-	
-	// CORS
-	CORSAllowedOrigins []string
-	
-	// Timeouts
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	IdleTimeout  time.Duration
-	
-	// Pagination
-	DefaultPageSize int
-	MaxPageSize     int
-}
-
-// LoadConfig loads configuration from environment variables
-func LoadConfig() *Config {
-	return &Config{
-		// Server
-		ServerPort:     getEnvAsInt("SERVER_PORT", 8080),
-		GRPCServerPort: getEnvAsInt("GRPC_SERVER_PORT", 9090),
-		
-		// MongoDB
-		MongoURI:      getEnv("MONGO_URI", "mongodb://localhost:27017"),
-		MongoDB:       getEnv("MONGO_DB", "ecom_orders"),
-		MongoUser:     getEnv("MONGO_USER", ""),
-		MongoPassword: getEnv("MONGO_PASSWORD", ""),
-		
-		// Kafka
-		KafkaBrokers: getEnvAsSlice("KAFKA_BROKERS", []string{"localhost:9092"}),
-		KafkaGroupID: getEnv("KAFKA_GROUP_ID", "order-service"),
-		
-		// JWT
-		JWTSecret:    getEnv("JWT_SECRET", "your-secret-key"),
-		JWTExpiresIn: getEnvAsDuration("JWT_EXPIRES_IN", 24*time.Hour),
-		
-		// CORS
-		CORSAllowedOrigins: getEnvAsSlice("CORS_ALLOWED_ORIGINS", []string{"*"}),
-		
-		// Timeouts
-		ReadTimeout:  getEnvAsDuration("READ_TIMEOUT", 5*time.Second),
-		WriteTimeout: getEnvAsDuration("WRITE_TIMEOUT", 10*time.Second),
-		IdleTimeout:  getEnvAsDuration("IDLE_TIMEOUT", 120*time.Second),
-		
-		// Pagination
-		DefaultPageSize: getEnvAsInt("DEFAULT_PAGE_SIZE", 10),
-		MaxPageSize:     getEnvAsInt("MAX_PAGE_SIZE", 100),
+	if value := os.Getenv("KAFKA_BROKERS"); value != "" {
+		config.Kafka.Brokers = value
 	}
-}
-
-// Helper function to get an environment variable or a default value
-func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
+	if value := os.Getenv("KAFKA_GROUP_ID"); value != "" {
+		config.Kafka.GroupID = value
 	}
-	return defaultValue
-}
 
-// Helper function to get an environment variable as an integer
-func getEnvAsInt(key string, defaultValue int) int {
-	valueStr := getEnv(key, "")
-	if value, err := strconv.Atoi(valueStr); err == nil {
-		return value
-	}
-	return defaultValue
-}
-
-// Helper function to get an environment variable as a slice
-func getEnvAsSlice(key string, defaultValue []string) []string {
-	valueStr := getEnv(key, "")
-	if valueStr == "" {
-		return defaultValue
-	}
-	return strings.Split(valueStr, ",")
-}
-
-// Helper function to get an environment variable as a duration
-func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
-	valueStr := getEnv(key, "")
-	if value, err := time.ParseDuration(valueStr); err == nil {
-		return value
-	}
-	return defaultValue
+	return config
 }

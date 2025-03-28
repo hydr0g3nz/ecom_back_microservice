@@ -1,96 +1,78 @@
-package http
+// internal/order_service/adapter/controller/http/responsener.go
+package httpctl
 
 import (
-	"encoding/json"
+	"errors"
 	"net/http"
 
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/adapter/dto"
+	"github.com/gofiber/fiber/v2"
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/entity"
 )
 
-// Responsener handles HTTP responses
-type Responsener struct{}
+var (
+	ErrBadRequest = errors.New("bad request")
+)
 
-// NewResponsner creates a new responsener
-func NewResponsner() *Responsener {
-	return &Responsener{}
+type successResponse struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+	Data    any    `json:"data"`
 }
 
-// JSON sends a JSON response
-func (r *Responsener) JSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	
-	if data != nil {
-		if err := json.NewEncoder(w).Encode(data); err != nil {
-			// Log error but continue
-			// TODO: implement proper logging
-			http.Error(w, "Error encoding response", http.StatusInternalServerError)
-		}
+type ErrorResponse struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+}
+
+// SuccessResp builds a success response
+func SuccessResp(c *fiber.Ctx, status int, message string, data any) error {
+	return c.Status(status).JSON(successResponse{
+		Status:  status,
+		Message: message,
+		Data:    data,
+	})
+}
+
+// HandleError builds an appropriate Fiber error response based on the domain error
+func HandleError(c *fiber.Ctx, err error) error {
+	var statusCode int
+	var message string
+
+	switch {
+	case errors.Is(err, ErrBadRequest):
+		statusCode = http.StatusBadRequest
+		message = "Bad request"
+	case errors.Is(err, entity.ErrOrderNotFound):
+		statusCode = http.StatusNotFound
+		message = "Order not found"
+	case errors.Is(err, entity.ErrInvalidOrderData):
+		statusCode = http.StatusBadRequest
+		message = "Invalid order data"
+	case errors.Is(err, entity.ErrInvalidOrderStatus):
+		statusCode = http.StatusBadRequest
+		message = "Invalid order status"
+	case errors.Is(err, entity.ErrOrderAlreadyExists):
+		statusCode = http.StatusConflict
+		message = "Order already exists"
+	case errors.Is(err, entity.ErrInvalidStatusTransition):
+		statusCode = http.StatusBadRequest
+		message = "Invalid status transition"
+	case errors.Is(err, entity.ErrInsufficientStock):
+		statusCode = http.StatusBadRequest
+		message = "Insufficient stock"
+	case errors.Is(err, entity.ErrPaymentFailed):
+		statusCode = http.StatusBadRequest
+		message = "Payment failed"
+	case errors.Is(err, entity.ErrInternalServerError):
+		statusCode = http.StatusInternalServerError
+		message = "Internal server error"
+	default:
+		statusCode = http.StatusInternalServerError
+		message = "Something went wrong"
 	}
-}
 
-// Success sends a success response
-func (r *Responsener) Success(w http.ResponseWriter, message string) {
-	r.JSON(w, http.StatusOK, dto.StatusResponse{
-		Success: true,
-		Message: message,
-	})
-}
-
-// Created sends a resource created response
-func (r *Responsener) Created(w http.ResponseWriter, data interface{}) {
-	r.JSON(w, http.StatusCreated, data)
-}
-
-// NoContent sends a no content response
-func (r *Responsener) NoContent(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// BadRequest sends a bad request response
-func (r *Responsener) BadRequest(w http.ResponseWriter, message string) {
-	r.JSON(w, http.StatusBadRequest, dto.ErrorResponse{
-		Code:    http.StatusBadRequest,
-		Message: message,
-	})
-}
-
-// NotFound sends a not found response
-func (r *Responsener) NotFound(w http.ResponseWriter, message string) {
-	r.JSON(w, http.StatusNotFound, dto.ErrorResponse{
-		Code:    http.StatusNotFound,
-		Message: message,
-	})
-}
-
-// InternalServerError sends an internal server error response
-func (r *Responsener) InternalServerError(w http.ResponseWriter, message string) {
-	r.JSON(w, http.StatusInternalServerError, dto.ErrorResponse{
-		Code:    http.StatusInternalServerError,
-		Message: message,
-	})
-}
-
-// Unauthorized sends an unauthorized response
-func (r *Responsener) Unauthorized(w http.ResponseWriter, message string) {
-	r.JSON(w, http.StatusUnauthorized, dto.ErrorResponse{
-		Code:    http.StatusUnauthorized,
-		Message: message,
-	})
-}
-
-// Forbidden sends a forbidden response
-func (r *Responsener) Forbidden(w http.ResponseWriter, message string) {
-	r.JSON(w, http.StatusForbidden, dto.ErrorResponse{
-		Code:    http.StatusForbidden,
-		Message: message,
-	})
-}
-
-// UnprocessableEntity sends an unprocessable entity response
-func (r *Responsener) UnprocessableEntity(w http.ResponseWriter, message string) {
-	r.JSON(w, http.StatusUnprocessableEntity, dto.ErrorResponse{
-		Code:    http.StatusUnprocessableEntity,
+	return c.Status(statusCode).JSON(ErrorResponse{
+		Status:  statusCode,
 		Message: message,
 	})
 }

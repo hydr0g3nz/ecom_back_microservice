@@ -1,275 +1,253 @@
-package http
+// internal/order_service/adapter/controller/http/order_controller.go
+package httpctl
 
 import (
-	"encoding/json"
-	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gofiber/fiber/v2"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/adapter/dto"
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/entity"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/valueobject"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/usecase"
+	"github.com/hydr0g3nz/ecom_back_microservice/pkg/logger"
 )
 
-// OrderController handles order-related HTTP requests
-type OrderController struct {
-	orderUseCase *usecase.OrderUseCase
-	responsener  *Responsener
+// OrderHandler handles HTTP requests for the order service
+type OrderHandler struct {
+	orderUsecase usecase.OrderUsecase
+	logger       logger.Logger
 }
 
-// NewOrderController creates a new order controller
-func NewOrderController(orderUseCase *usecase.OrderUseCase) *OrderController {
-	return &OrderController{
-		orderUseCase: orderUseCase,
-		responsener:  NewResponsner(),
+// NewOrderHandler creates a new instance of OrderHandler
+func NewOrderHandler(ou usecase.OrderUsecase, l logger.Logger) *OrderHandler {
+	return &OrderHandler{
+		orderUsecase: ou,
+		logger:       l,
 	}
 }
 
-// RegisterRoutes registers the routes for the order controller
-func (c *OrderController) RegisterRoutes(r chi.Router) {
-	r.Route("/orders", func(r chi.Router) {
-		r.Post("/", c.CreateOrder)
-		r.Get("/", c.ListOrders)
-		r.Get("/{id}", c.GetOrder)
-		r.Put("/{id}/status", c.UpdateOrderStatus)
-		r.Post("/{id}/payment", c.AddPayment)
-		r.Delete("/{id}", c.CancelOrder)
-		r.Get("/user/{user_id}", c.GetUserOrders)
-	})
+// RegisterRoutes registers the routes for the order service
+func (h *OrderHandler) RegisterRoutes(r fiber.Router) {
+	api := r.Group("/orders")
+
+	// Order routes
+	api.Post("/", h.CreateOrder)
+	api.Get("/", h.ListOrders)
+	api.Get("/:id", h.GetOrder)
+	api.Put("/:id", h.UpdateOrder)
+	api.Patch("/:id", h.PatchOrder)
+	api.Delete("/:id", h.CancelOrder)
+	api.Post("/:id/status", h.UpdateOrderStatus)
+	api.Get("/user/:userId", h.GetOrdersByUser)
 }
 
 // CreateOrder handles the creation of a new order
-func (c *OrderController) CreateOrder(w http.ResponseWriter, r *http.Request) {
-	var req dto.CreateOrderRequest
-	
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		c.responsener.BadRequest(w, "Invalid request body")
-		return
+func (h *OrderHandler) CreateOrder(c *fiber.Ctx) error {
+	var req dto.OrderRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error("Failed to parse request body", "error", err)
+		return HandleError(c, ErrBadRequest)
 	}
-	
-	if err := req.Validate(); err != nil {
-		c.responsener.BadRequest(w, err.Error())
-		return
-	}
-	
-	order, err := c.orderUseCase.CreateOrder(r.Context(), req.UserID, req.ToOrderItems(), req.ShippingAddress)
+
+	ctx := c.Context()
+	order := req.ToEntity()
+	createdOrder, err := h.orderUsecase.CreateOrder(ctx, &order)
 	if err != nil {
-		switch err {
-		case entity.ErrInvalidUserID, entity.ErrEmptyOrderItems:
-			c.responsener.BadRequest(w, err.Error())
-		case entity.ErrOrderAlreadyExists:
-			c.responsener.UnprocessableEntity(w, err.Error())
-		default:
-			c.responsener.InternalServerError(w, "Failed to create order")
-		}
-		return
+		h.logger.Error("Failed to create order", "error", err)
+		return HandleError(c, err)
 	}
-	
-	c.responsener.Created(w, dto.NewOrderResponse(order))
+
+	response := dto.OrderResponseFromEntity(createdOrder)
+	return SuccessResp(c, fiber.StatusCreated, "Order created successfully", response)
 }
 
-// GetOrder gets an order by ID
-func (c *OrderController) GetOrder(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+// GetOrder handles retrieving an order by ID
+func (h *OrderHandler) GetOrder(c *fiber.Ctx) error {
+	id := c.Params("id")
 	if id == "" {
-		c.responsener.BadRequest(w, "Order ID is required")
-		return
+		return HandleError(c, ErrBadRequest)
 	}
-	
-	order, err := c.orderUseCase.GetOrderByID(r.Context(), id)
+
+	ctx := c.Context()
+	order, err := h.orderUsecase.GetOrderByID(ctx, id)
 	if err != nil {
-		if err == entity.ErrOrderNotFound {
-			c.responsener.NotFound(w, "Order not found")
-		} else {
-			c.responsener.InternalServerError(w, "Failed to get order")
-		}
-		return
+		h.logger.Error("Failed to get order", "id", id, "error", err)
+		return HandleError(c, err)
 	}
-	
-	c.responsener.JSON(w, http.StatusOK, dto.NewOrderResponse(order))
+
+	response := dto.OrderResponseFromEntity(order)
+	return SuccessResp(c, fiber.StatusOK, "Order retrieved successfully", response)
 }
 
-// UpdateOrderStatus updates the status of an order
-func (c *OrderController) UpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		c.responsener.BadRequest(w, "Order ID is required")
-		return
-	}
-	
-	var req dto.UpdateOrderStatusRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		c.responsener.BadRequest(w, "Invalid request body")
-		return
-	}
-	
-	if err := req.Validate(); err != nil {
-		c.responsener.BadRequest(w, err.Error())
-		return
-	}
-	
-	err := c.orderUseCase.UpdateOrderStatus(r.Context(), id, valueobject.OrderStatus(req.Status))
-	if err != nil {
-		switch err {
-		case entity.ErrOrderNotFound:
-			c.responsener.NotFound(w, "Order not found")
-		case entity.ErrInvalidOrderStatus:
-			c.responsener.BadRequest(w, "Invalid order status")
-		default:
-			c.responsener.InternalServerError(w, "Failed to update order status")
-		}
-		return
-	}
-	
-	c.responsener.Success(w, "Order status updated")
-}
+// ListOrders handles retrieving a list of orders
+func (h *OrderHandler) ListOrders(c *fiber.Ctx) error {
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	pageSize, _ := strconv.Atoi(c.Query("pageSize", "10"))
 
-// AddPayment adds payment information to an order
-func (c *OrderController) AddPayment(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		c.responsener.BadRequest(w, "Order ID is required")
-		return
+	if page < 1 {
+		page = 1
 	}
-	
-	var req dto.OrderPaymentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		c.responsener.BadRequest(w, "Invalid request body")
-		return
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
 	}
-	
-	if err := req.Validate(); err != nil {
-		c.responsener.BadRequest(w, err.Error())
-		return
-	}
-	
-	// Ensure the order ID in the URL matches the one in the request
-	if req.OrderID != "" && req.OrderID != id {
-		c.responsener.BadRequest(w, "Order ID mismatch")
-		return
-	}
-	
-	err := c.orderUseCase.AddPaymentToOrder(r.Context(), id, req.PaymentID)
-	if err != nil {
-		switch err {
-		case entity.ErrOrderNotFound:
-			c.responsener.NotFound(w, "Order not found")
-		default:
-			c.responsener.InternalServerError(w, "Failed to process payment")
-		}
-		return
-	}
-	
-	c.responsener.Success(w, "Payment processed successfully")
-}
 
-// CancelOrder cancels an order
-func (c *OrderController) CancelOrder(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		c.responsener.BadRequest(w, "Order ID is required")
-		return
+	// Build filters from query parameters
+	filters := make(map[string]interface{})
+	if status := c.Query("status"); status != "" {
+		filters["status"] = status
 	}
-	
-	err := c.orderUseCase.CancelOrder(r.Context(), id)
-	if err != nil {
-		switch err {
-		case entity.ErrOrderNotFound:
-			c.responsener.NotFound(w, "Order not found")
-		default:
-			c.responsener.InternalServerError(w, "Failed to cancel order")
-		}
-		return
-	}
-	
-	c.responsener.Success(w, "Order cancelled")
-}
 
-// GetUserOrders gets all orders for a user
-func (c *OrderController) GetUserOrders(w http.ResponseWriter, r *http.Request) {
-	userID := chi.URLParam(r, "user_id")
-	if userID == "" {
-		c.responsener.BadRequest(w, "User ID is required")
-		return
-	}
-	
-	orders, err := c.orderUseCase.GetOrdersByUserID(r.Context(), userID)
+	ctx := c.Context()
+	orders, total, err := h.orderUsecase.ListOrders(ctx, page, pageSize, filters)
 	if err != nil {
-		c.responsener.InternalServerError(w, "Failed to get user orders")
-		return
+		h.logger.Error("Failed to list orders", "error", err)
+		return HandleError(c, err)
 	}
-	
-	// Convert to response DTOs
-	responses := make([]dto.OrderResponse, len(orders))
+
+	// Convert entities to response DTOs
+	responseOrders := make([]dto.OrderResponse, len(orders))
 	for i, order := range orders {
-		response := dto.OrderResponse{}
-		response.FromEntity(order)
-		responses[i] = response
+		responseOrders[i] = dto.OrderResponseFromEntity(order)
 	}
-	
-	c.responsener.JSON(w, http.StatusOK, map[string]interface{}{
-		"orders": responses,
-		"count":  len(responses),
-	})
+
+	paginatedResponse := dto.NewPaginatedResponse(total, page, pageSize, responseOrders)
+	return SuccessResp(c, fiber.StatusOK, "Orders retrieved successfully", paginatedResponse)
 }
 
-// ListOrders lists orders with pagination and filtering
-func (c *OrderController) ListOrders(w http.ResponseWriter, r *http.Request) {
-	// Parse query parameters
-	status := r.URL.Query().Get("status")
-	pageStr := r.URL.Query().Get("page")
-	limitStr := r.URL.Query().Get("limit")
-	
-	page := 1
-	if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-		page = p
+// UpdateOrder handles updating an existing order
+func (h *OrderHandler) UpdateOrder(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return HandleError(c, ErrBadRequest)
 	}
-	
-	limit := 10 // Default limit
-	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
-		limit = l
+
+	var req dto.OrderRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error("Failed to parse request body", "error", err)
+		return HandleError(c, ErrBadRequest)
 	}
-	
-	var orders []*entity.Order
-	var totalCount int
-	var err error
-	
-	if status != "" {
-		// Filter by status if provided
-		orderStatus := valueobject.OrderStatus(status)
-		if !orderStatus.IsValid() {
-			c.responsener.BadRequest(w, "Invalid order status")
-			return
-		}
-		
-		orders, err = c.orderUseCase.ListOrdersByStatus(r.Context(), orderStatus)
-		totalCount = len(orders)
-		
-		// Apply pagination manually (not ideal but works for now)
-		if len(orders) > 0 {
-			start := (page - 1) * limit
-			end := start + limit
-			
-			if start >= len(orders) {
-				orders = []*entity.Order{}
-			} else if end > len(orders) {
-				orders = orders[start:]
-			} else {
-				orders = orders[start:end]
-			}
-		}
-	} else {
-		// Get paginated orders
-		orders, totalCount, err = c.orderUseCase.GetOrdersPaginated(r.Context(), page, limit)
-	}
-	
+
+	ctx := c.Context()
+	order := req.ToEntity()
+	updatedOrder, err := h.orderUsecase.UpdateOrder(ctx, id, order)
 	if err != nil {
-		c.responsener.InternalServerError(w, "Failed to list orders")
-		return
+		h.logger.Error("Failed to update order", "id", id, "error", err)
+		return HandleError(c, err)
 	}
-	
-	// Create response
-	response := dto.NewOrdersResponse(orders, totalCount, page, limit)
-	c.responsener.JSON(w, http.StatusOK, response)
+
+	response := dto.OrderResponseFromEntity(updatedOrder)
+	return SuccessResp(c, fiber.StatusOK, "Order updated successfully", response)
+}
+
+// PatchOrder handles partial updates to an order
+func (h *OrderHandler) PatchOrder(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return HandleError(c, ErrBadRequest)
+	}
+
+	// Parse request into a map for flexible partial updates
+	var patchData map[string]interface{}
+	if err := c.BodyParser(&patchData); err != nil {
+		h.logger.Error("Failed to parse patch request body", "error", err)
+		return HandleError(c, ErrBadRequest)
+	}
+
+	ctx := c.Context()
+	updatedOrder, err := h.orderUsecase.UpdateOrderPartial(ctx, id, patchData)
+	if err != nil {
+		h.logger.Error("Failed to patch order", "id", id, "error", err)
+		return HandleError(c, err)
+	}
+
+	response := dto.OrderResponseFromEntity(updatedOrder)
+	return SuccessResp(c, fiber.StatusOK, "Order updated successfully", response)
+}
+
+// CancelOrder handles cancelling an order
+func (h *OrderHandler) CancelOrder(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return HandleError(c, ErrBadRequest)
+	}
+
+	var req dto.CancelOrderRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error("Failed to parse request body", "error", err)
+		return HandleError(c, ErrBadRequest)
+	}
+
+	ctx := c.Context()
+	cancelledOrder, err := h.orderUsecase.CancelOrder(ctx, id, req.Reason)
+	if err != nil {
+		h.logger.Error("Failed to cancel order", "id", id, "error", err)
+		return HandleError(c, err)
+	}
+
+	response := dto.OrderResponseFromEntity(cancelledOrder)
+	return SuccessResp(c, fiber.StatusOK, "Order cancelled successfully", response)
+}
+
+// UpdateOrderStatus handles updating the status of an order
+func (h *OrderHandler) UpdateOrderStatus(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return HandleError(c, ErrBadRequest)
+	}
+
+	var req dto.UpdateOrderStatusRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error("Failed to parse request body", "error", err)
+		return HandleError(c, ErrBadRequest)
+	}
+
+	// Parse status
+	status, err := valueobject.ParseOrderStatus(req.Status)
+	if err != nil {
+		h.logger.Error("Invalid order status", "status", req.Status)
+		return HandleError(c, err)
+	}
+
+	ctx := c.Context()
+	updatedOrder, err := h.orderUsecase.UpdateOrderStatus(ctx, id, status, req.Comment)
+	if err != nil {
+		h.logger.Error("Failed to update order status", "id", id, "status", req.Status, "error", err)
+		return HandleError(c, err)
+	}
+
+	response := dto.OrderResponseFromEntity(updatedOrder)
+	return SuccessResp(c, fiber.StatusOK, "Order status updated successfully", response)
+}
+
+// GetOrdersByUser handles retrieving orders for a specific user
+func (h *OrderHandler) GetOrdersByUser(c *fiber.Ctx) error {
+	userID := c.Params("userId")
+	if userID == "" {
+		return HandleError(c, ErrBadRequest)
+	}
+
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	pageSize, _ := strconv.Atoi(c.Query("pageSize", "10"))
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	ctx := c.Context()
+	orders, total, err := h.orderUsecase.GetOrdersByUserID(ctx, userID, page, pageSize)
+	if err != nil {
+		h.logger.Error("Failed to get orders by user", "userId", userID, "error", err)
+		return HandleError(c, err)
+	}
+
+	// Convert entities to response DTOs
+	responseOrders := make([]dto.OrderResponse, len(orders))
+	for i, order := range orders {
+		responseOrders[i] = dto.OrderResponseFromEntity(order)
+	}
+
+	paginatedResponse := dto.NewPaginatedResponse(total, page, pageSize, responseOrders)
+	return SuccessResp(c, fiber.StatusOK, "User orders retrieved successfully", paginatedResponse)
 }

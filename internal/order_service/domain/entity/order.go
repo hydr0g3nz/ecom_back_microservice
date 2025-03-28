@@ -1,68 +1,128 @@
+// internal/order_service/domain/entity/order.go
 package entity
 
 import (
 	"time"
-	
+
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/valueobject"
 )
 
-// Order represents the order entity in the domain
-type Order struct {
-	ID          string                    `json:"id"`
-	UserID      string                    `json:"user_id"`
-	Items       []OrderItem               `json:"items"`
-	TotalAmount float64                   `json:"total_amount"`
-	Status      valueobject.OrderStatus   `json:"status"`
-	ShippingAddress string                `json:"shipping_address"`
-	PaymentID   string                    `json:"payment_id"`
-	CreatedAt   time.Time                 `json:"created_at"`
-	UpdatedAt   time.Time                 `json:"updated_at"`
-}
-
-// OrderItem represents an item in an order
+// OrderItem represents a single item in an order
 type OrderItem struct {
-	ProductID  string  `json:"product_id"`
-	Quantity   int     `json:"quantity"`
-	Price      float64 `json:"price"`
-	TotalPrice float64 `json:"total_price"`
+	ProductID   string  `json:"product_id" bson:"product_id"`
+	ProductName string  `json:"product_name" bson:"product_name"`
+	Quantity    int     `json:"quantity" bson:"quantity"`
+	Price       float64 `json:"price" bson:"price"`
+	Subtotal    float64 `json:"subtotal" bson:"subtotal"`
 }
 
-// NewOrder creates a new order
-func NewOrder(userID string, items []OrderItem, shippingAddress string) *Order {
-	totalAmount := calculateTotalAmount(items)
-	
-	return &Order{
-		UserID:         userID,
-		Items:          items,
-		TotalAmount:    totalAmount,
-		Status:         valueobject.OrderStatusCreated,
-		ShippingAddress: shippingAddress,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
+// Address represents a shipping or billing address
+type Address struct {
+	Street     string `json:"street" bson:"street"`
+	City       string `json:"city" bson:"city"`
+	State      string `json:"state" bson:"state"`
+	Country    string `json:"country" bson:"country"`
+	PostalCode string `json:"postal_code" bson:"postal_code"`
 }
 
-// CalculateTotalAmount calculates the total amount of the order
-func calculateTotalAmount(items []OrderItem) float64 {
-	var total float64
-	for _, item := range items {
-		total += item.TotalPrice
-	}
-	return total
+// Payment represents payment information for an order
+type Payment struct {
+	Method        string     `json:"method" bson:"method"`
+	Amount        float64    `json:"amount" bson:"amount"`
+	TransactionID string     `json:"transaction_id" bson:"transaction_id"`
+	Status        string     `json:"status" bson:"status"`
+	PaidAt        *time.Time `json:"paid_at,omitempty" bson:"paid_at,omitempty"`
 }
 
-// UpdateStatus updates the status of the order
-func (o *Order) UpdateStatus(status valueobject.OrderStatus) error {
-	if !status.IsValid() {
-		return ErrInvalidOrderStatus
+// Order represents an order entity
+type Order struct {
+	ID            string                   `json:"id" bson:"_id"`
+	UserID        string                   `json:"user_id" bson:"user_id"`
+	Items         []OrderItem              `json:"items" bson:"items"`
+	TotalAmount   float64                  `json:"total_amount" bson:"total_amount"`
+	Status        valueobject.OrderStatus  `json:"status" bson:"status"`
+	ShippingInfo  Address                  `json:"shipping_info" bson:"shipping_info"`
+	BillingInfo   Address                  `json:"billing_info" bson:"billing_info"`
+	Payment       Payment                  `json:"payment" bson:"payment"`
+	Notes         string                   `json:"notes,omitempty" bson:"notes,omitempty"`
+	CreatedAt     time.Time                `json:"created_at" bson:"created_at"`
+	UpdatedAt     time.Time                `json:"updated_at" bson:"updated_at"`
+	StatusHistory []OrderStatusHistoryItem `json:"status_history" bson:"status_history"`
+}
+
+// OrderStatusHistoryItem represents a status change in the order history
+type OrderStatusHistoryItem struct {
+	Status    valueobject.OrderStatus `json:"status" bson:"status"`
+	Timestamp time.Time               `json:"timestamp" bson:"timestamp"`
+	Comment   string                  `json:"comment,omitempty" bson:"comment,omitempty"`
+}
+
+// AddStatusHistoryItem adds a new status change to the order history
+func (o *Order) AddStatusHistoryItem(status valueobject.OrderStatus, comment string) {
+	historyItem := OrderStatusHistoryItem{
+		Status:    status,
+		Timestamp: time.Now(),
+		Comment:   comment,
 	}
+	o.StatusHistory = append(o.StatusHistory, historyItem)
 	o.Status = status
 	o.UpdatedAt = time.Now()
+}
+
+// CalculateTotalAmount calculates the total amount for the order
+func (o *Order) CalculateTotalAmount() {
+	var total float64
+	for _, item := range o.Items {
+		total += item.Subtotal
+	}
+	o.TotalAmount = total
+}
+
+// ValidateOrder validates if the order has all required fields
+func (o *Order) ValidateOrder() error {
+	if o.UserID == "" {
+		return ErrInvalidOrderData
+	}
+	if len(o.Items) == 0 {
+		return ErrInvalidOrderData
+	}
+	for _, item := range o.Items {
+		if item.ProductID == "" || item.Quantity <= 0 {
+			return ErrInvalidOrderData
+		}
+	}
 	return nil
 }
 
-// AddPaymentID adds a payment ID to the order
-func (o *Order) AddPaymentID(paymentID string) {
-	o.PaymentID = paymentID
-	o.UpdatedAt = time.Now()
+// CanTransitionToStatus checks if the order can transition to the given status
+func (o *Order) CanTransitionToStatus(newStatus valueobject.OrderStatus) bool {
+	// Define valid status transitions based on current status
+	switch o.Status {
+	case valueobject.OrderStatusPending:
+		return newStatus == valueobject.OrderStatusProcessing ||
+			newStatus == valueobject.OrderStatusCancelled
+
+	case valueobject.OrderStatusProcessing:
+		return newStatus == valueobject.OrderStatusShipped ||
+			newStatus == valueobject.OrderStatusCancelled ||
+			newStatus == valueobject.OrderStatusFailed
+
+	case valueobject.OrderStatusShipped:
+		return newStatus == valueobject.OrderStatusDelivered ||
+			newStatus == valueobject.OrderStatusReturned
+
+	case valueobject.OrderStatusDelivered:
+		return newStatus == valueobject.OrderStatusReturned ||
+			newStatus == valueobject.OrderStatusCompleted
+
+	case valueobject.OrderStatusFailed:
+		return newStatus == valueobject.OrderStatusProcessing
+
+	case valueobject.OrderStatusCancelled,
+		valueobject.OrderStatusReturned,
+		valueobject.OrderStatusCompleted:
+		return false // Terminal states
+	}
+
+	return false
 }

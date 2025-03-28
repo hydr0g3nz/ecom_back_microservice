@@ -1,3 +1,4 @@
+// internal/order_service/adapter/dto/response.go
 package dto
 
 import (
@@ -6,111 +7,136 @@ import (
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/entity"
 )
 
-// OrderResponse represents the order response
-type OrderResponse struct {
-	ID              string               `json:"id"`
-	UserID          string               `json:"user_id"`
-	Items           []OrderItemResponse  `json:"items"`
-	TotalAmount     float64              `json:"total_amount"`
-	Status          string               `json:"status"`
-	ShippingAddress string               `json:"shipping_address"`
-	PaymentID       string               `json:"payment_id,omitempty"`
-	CreatedAt       time.Time            `json:"created_at"`
-	UpdatedAt       time.Time            `json:"updated_at"`
+// AddressResponse represents an address in a response
+type AddressResponse struct {
+	Street     string `json:"street"`
+	City       string `json:"city"`
+	State      string `json:"state"`
+	Country    string `json:"country"`
+	PostalCode string `json:"postal_code"`
 }
 
-// OrderItemResponse represents an item in an order response
+// OrderItemResponse represents an order item in a response
 type OrderItemResponse struct {
-	ProductID  string  `json:"product_id"`
-	Quantity   int     `json:"quantity"`
-	Price      float64 `json:"price"`
-	TotalPrice float64 `json:"total_price"`
+	ProductID   string  `json:"product_id"`
+	ProductName string  `json:"product_name"`
+	Quantity    int     `json:"quantity"`
+	Price       float64 `json:"price"`
+	Subtotal    float64 `json:"subtotal"`
 }
 
-// FromEntity converts a domain entity to a response DTO
-func (r *OrderResponse) FromEntity(order *entity.Order) {
-	r.ID = order.ID
-	r.UserID = order.UserID
-	r.TotalAmount = order.TotalAmount
-	r.Status = string(order.Status)
-	r.ShippingAddress = order.ShippingAddress
-	r.PaymentID = order.PaymentID
-	r.CreatedAt = order.CreatedAt
-	r.UpdatedAt = order.UpdatedAt
+// PaymentResponse represents payment information in a response
+type PaymentResponse struct {
+	Method        string     `json:"method"`
+	Amount        float64    `json:"amount"`
+	TransactionID string     `json:"transaction_id,omitempty"`
+	Status        string     `json:"status,omitempty"`
+	PaidAt        *time.Time `json:"paid_at,omitempty"`
+}
 
-	r.Items = make([]OrderItemResponse, len(order.Items))
+// OrderStatusHistoryResponse represents a status change in the order history
+type OrderStatusHistoryResponse struct {
+	Status    string    `json:"status"`
+	Timestamp time.Time `json:"timestamp"`
+	Comment   string    `json:"comment,omitempty"`
+}
+
+// OrderResponse represents an order response
+type OrderResponse struct {
+	ID            string                       `json:"id"`
+	UserID        string                       `json:"user_id"`
+	Items         []OrderItemResponse          `json:"items"`
+	TotalAmount   float64                      `json:"total_amount"`
+	Status        string                       `json:"status"`
+	ShippingInfo  AddressResponse              `json:"shipping_info"`
+	BillingInfo   AddressResponse              `json:"billing_info"`
+	Payment       PaymentResponse              `json:"payment"`
+	Notes         string                       `json:"notes,omitempty"`
+	CreatedAt     time.Time                    `json:"created_at"`
+	UpdatedAt     time.Time                    `json:"updated_at"`
+	StatusHistory []OrderStatusHistoryResponse `json:"status_history"`
+}
+
+// OrderResponseFromEntity converts an order entity to OrderResponse
+func OrderResponseFromEntity(order *entity.Order) OrderResponse {
+	// Convert OrderItems
+	items := make([]OrderItemResponse, len(order.Items))
 	for i, item := range order.Items {
-		r.Items[i] = OrderItemResponse{
-			ProductID:  item.ProductID,
-			Quantity:   item.Quantity,
-			Price:      item.Price,
-			TotalPrice: item.TotalPrice,
+		items[i] = OrderItemResponse{
+			ProductID:   item.ProductID,
+			ProductName: item.ProductName,
+			Quantity:    item.Quantity,
+			Price:       item.Price,
+			Subtotal:    item.Subtotal,
 		}
 	}
+
+	// Convert StatusHistory
+	statusHistory := make([]OrderStatusHistoryResponse, len(order.StatusHistory))
+	for i, history := range order.StatusHistory {
+		statusHistory[i] = OrderStatusHistoryResponse{
+			Status:    history.Status.String(),
+			Timestamp: history.Timestamp,
+			Comment:   history.Comment,
+		}
+	}
+
+	// Create and return the OrderResponse
+	return OrderResponse{
+		ID:          order.ID,
+		UserID:      order.UserID,
+		Items:       items,
+		TotalAmount: order.TotalAmount,
+		Status:      order.Status.String(),
+		ShippingInfo: AddressResponse{
+			Street:     order.ShippingInfo.Street,
+			City:       order.ShippingInfo.City,
+			State:      order.ShippingInfo.State,
+			Country:    order.ShippingInfo.Country,
+			PostalCode: order.ShippingInfo.PostalCode,
+		},
+		BillingInfo: AddressResponse{
+			Street:     order.BillingInfo.Street,
+			City:       order.BillingInfo.City,
+			State:      order.BillingInfo.State,
+			Country:    order.BillingInfo.Country,
+			PostalCode: order.BillingInfo.PostalCode,
+		},
+		Payment: PaymentResponse{
+			Method:        order.Payment.Method,
+			Amount:        order.Payment.Amount,
+			TransactionID: order.Payment.TransactionID,
+			Status:        order.Payment.Status,
+			PaidAt:        order.Payment.PaidAt,
+		},
+		Notes:         order.Notes,
+		CreatedAt:     order.CreatedAt,
+		UpdatedAt:     order.UpdatedAt,
+		StatusHistory: statusHistory,
+	}
 }
 
-// NewOrderResponse creates a new OrderResponse from an entity
-func NewOrderResponse(order *entity.Order) *OrderResponse {
-	response := &OrderResponse{}
-	response.FromEntity(order)
-	return response
+// PaginatedResponse represents a paginated response
+type PaginatedResponse struct {
+	Total      int         `json:"total"`
+	Page       int         `json:"page"`
+	PageSize   int         `json:"page_size"`
+	TotalPages int         `json:"total_pages"`
+	Data       interface{} `json:"data"`
 }
 
-// OrdersResponse represents a list of orders response with pagination
-type OrdersResponse struct {
-	Orders     []OrderResponse `json:"orders"`
-	TotalCount int             `json:"total_count"`
-	Page       int             `json:"page"`
-	PageSize   int             `json:"page_size"`
-	TotalPages int             `json:"total_pages"`
-}
+// NewPaginatedResponse creates a new paginated response
+func NewPaginatedResponse(total, page, pageSize int, data interface{}) PaginatedResponse {
+	totalPages := total / pageSize
+	if total%pageSize != 0 {
+		totalPages++
+	}
 
-// ErrorResponse represents an error response
-type ErrorResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// StatusResponse represents a status response
-type StatusResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
-}
-
-// OrderSummaryResponse represents a summary of orders
-type OrderSummaryResponse struct {
-	TotalOrders     int     `json:"total_orders"`
-	TotalAmount     float64 `json:"total_amount"`
-	PendingOrders   int     `json:"pending_orders"`
-	ProcessingOrders int    `json:"processing_orders"`
-	ShippedOrders   int     `json:"shipped_orders"`
-	DeliveredOrders int     `json:"delivered_orders"`
-	CancelledOrders int     `json:"cancelled_orders"`
-}
-
-// PaymentResponse represents a payment response
-type PaymentResponse struct {
-	OrderID     string  `json:"order_id"`
-	PaymentID   string  `json:"payment_id"`
-	Amount      float64 `json:"amount"`
-	Status      string  `json:"status"`
-	Method      string  `json:"method"`
-	ProcessedAt time.Time `json:"processed_at"`
-}
-
-// FromEntities converts a list of domain entities to a paginated response
-func NewOrdersResponse(orders []*entity.Order, totalCount, page, pageSize int) *OrdersResponse {
-	response := &OrdersResponse{
-		Orders:     make([]OrderResponse, len(orders)),
-		TotalCount: totalCount,
+	return PaginatedResponse{
+		Total:      total,
 		Page:       page,
 		PageSize:   pageSize,
-		TotalPages: (totalCount + pageSize - 1) / pageSize, // Ceiling division
+		TotalPages: totalPages,
+		Data:       data,
 	}
-
-	for i, order := range orders {
-		response.Orders[i] = *NewOrderResponse(order)
-	}
-
-	return response
 }
