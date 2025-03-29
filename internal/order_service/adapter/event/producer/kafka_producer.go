@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/entity"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/service"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/logger"
+	"github.com/segmentio/kafka-go"
 )
 
 // EventPayload defines the structure of the event payload
@@ -35,9 +35,10 @@ type OrderItemData struct {
 
 // KafkaProducer implements EventService interface for producing events
 type KafkaProducer struct {
-	producer *kafka.Producer
-	logger   logger.Logger
-	topics   struct {
+	writers map[string]*kafka.Writer
+	logger  logger.Logger
+	brokers []string
+	topics  struct {
 		orderEvents     string
 		inventoryEvents string
 		paymentEvents   string
@@ -46,19 +47,13 @@ type KafkaProducer struct {
 
 // NewKafkaProducer creates a new KafkaProducer
 func NewKafkaProducer(brokers string, logger logger.Logger) (*KafkaProducer, error) {
-	// Create Kafka producer
-	producer, err := kafka.NewProducer(&kafka.ConfigMap{
-		"bootstrap.servers": brokers,
-		"acks":              "all",
-		"retries":           3,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kafka producer: %w", err)
-	}
+	// Parse brokers string into slice
+	brokersList := []string{brokers} // If single broker
 
 	kp := &KafkaProducer{
-		producer: producer,
-		logger:   logger,
+		writers: make(map[string]*kafka.Writer),
+		logger:  logger,
+		brokers: brokersList,
 	}
 
 	// Set default topics
@@ -66,66 +61,68 @@ func NewKafkaProducer(brokers string, logger logger.Logger) (*KafkaProducer, err
 	kp.topics.inventoryEvents = "inventory-events"
 	kp.topics.paymentEvents = "payment-events"
 
-	// Start go routine to handle delivery reports
-	go kp.handleDeliveryReports()
-
 	return kp, nil
 }
 
-// handleDeliveryReports handles Kafka delivery reports
-func (kp *KafkaProducer) handleDeliveryReports() {
-	for e := range kp.producer.Events() {
-		switch ev := e.(type) {
-		case *kafka.Message:
-			if ev.TopicPartition.Error != nil {
-				kp.logger.Error("Failed to deliver message",
-					"topic", *ev.TopicPartition.Topic,
-					"partition", ev.TopicPartition.Partition,
-					"error", ev.TopicPartition.Error)
-			} else {
-				kp.logger.Debug("Message delivered",
-					"topic", *ev.TopicPartition.Topic,
-					"partition", ev.TopicPartition.Partition,
-					"offset", ev.TopicPartition.Offset)
-			}
-		}
+// getWriter returns a Kafka writer for the given topic
+func (kp *KafkaProducer) getWriter(topic string) *kafka.Writer {
+	if writer, exists := kp.writers[topic]; exists {
+		return writer
 	}
+
+	writer := &kafka.Writer{
+		Addr:                   kafka.TCP(kp.brokers...),
+		Topic:                  topic,
+		Balancer:               &kafka.LeastBytes{},
+		AllowAutoTopicCreation: true,
+		RequiredAcks:           kafka.RequireAll, // Equivalent to "acks=all"
+		MaxAttempts:            3,                // Equivalent to "retries=3"
+	}
+
+	kp.writers[topic] = writer
+	return writer
 }
 
 // Close closes the Kafka producer
 func (kp *KafkaProducer) Close() error {
-	kp.producer.Flush(15 * 1000) // 15 seconds timeout
-	kp.producer.Close()
-	return nil
+	var lastErr error
+	for topic, writer := range kp.writers {
+		if err := writer.Close(); err != nil {
+			kp.logger.Error("Failed to close Kafka writer", "topic", topic, "error", err)
+			lastErr = err
+		}
+	}
+	return lastErr
 }
 
 // produceEvent produces a Kafka event with the given payload to the specified topic
-func (kp *KafkaProducer) produceEvent(topic, key string, payload interface{}) error {
+func (kp *KafkaProducer) produceEvent(ctx context.Context, topic, key string, payload interface{}) error {
 	// Serialize payload to JSON
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
+	// Get or create a writer for this topic
+	writer := kp.getWriter(topic)
+
 	// Create Kafka message
-	message := &kafka.Message{
-		TopicPartition: kafka.TopicPartition{
-			Topic:     &topic,
-			Partition: kafka.PartitionAny,
+	headers := []kafka.Header{
+		{
+			Key:   "content-type",
+			Value: []byte("application/json"),
 		},
-		Key:   []byte(key),
-		Value: jsonPayload,
-		Headers: []kafka.Header{
-			{
-				Key:   "content-type",
-				Value: []byte("application/json"),
-			},
-		},
-		Timestamp: time.Now(),
+	}
+
+	message := kafka.Message{
+		Key:     []byte(key),
+		Value:   jsonPayload,
+		Headers: headers,
+		Time:    time.Now(),
 	}
 
 	// Produce message to Kafka
-	err = kp.producer.Produce(message, nil)
+	err = writer.WriteMessages(ctx, message)
 	if err != nil {
 		return fmt.Errorf("failed to produce message: %w", err)
 	}
@@ -158,7 +155,7 @@ func (kp *KafkaProducer) PublishOrderCreated(ctx context.Context, order *entity.
 	}
 
 	// Produce event to Kafka
-	err := kp.produceEvent(kp.topics.orderEvents, order.ID, payload)
+	err := kp.produceEvent(ctx, kp.topics.orderEvents, order.ID, payload)
 	if err != nil {
 		kp.logger.Error("Failed to publish order created event", "error", err, "order_id", order.ID)
 		return err
@@ -182,7 +179,7 @@ func (kp *KafkaProducer) PublishOrderUpdated(ctx context.Context, order *entity.
 	}
 
 	// Produce event to Kafka
-	err := kp.produceEvent(kp.topics.orderEvents, order.ID, payload)
+	err := kp.produceEvent(ctx, kp.topics.orderEvents, order.ID, payload)
 	if err != nil {
 		kp.logger.Error("Failed to publish order updated event", "error", err, "order_id", order.ID)
 		return err
@@ -206,7 +203,7 @@ func (kp *KafkaProducer) PublishOrderCancelled(ctx context.Context, order *entit
 	}
 
 	// Produce event to Kafka
-	err := kp.produceEvent(kp.topics.orderEvents, order.ID, payload)
+	err := kp.produceEvent(ctx, kp.topics.orderEvents, order.ID, payload)
 	if err != nil {
 		kp.logger.Error("Failed to publish order cancelled event", "error", err, "order_id", order.ID)
 		return err
@@ -230,7 +227,7 @@ func (kp *KafkaProducer) PublishOrderCompleted(ctx context.Context, order *entit
 	}
 
 	// Produce event to Kafka
-	err := kp.produceEvent(kp.topics.orderEvents, order.ID, payload)
+	err := kp.produceEvent(ctx, kp.topics.orderEvents, order.ID, payload)
 	if err != nil {
 		kp.logger.Error("Failed to publish order completed event", "error", err, "order_id", order.ID)
 		return err
@@ -265,7 +262,7 @@ func (kp *KafkaProducer) PublishReserveInventory(ctx context.Context, order *ent
 	}
 
 	// Produce event to Kafka
-	err := kp.produceEvent(kp.topics.inventoryEvents, order.ID, payload)
+	err := kp.produceEvent(ctx, kp.topics.inventoryEvents, order.ID, payload)
 	if err != nil {
 		kp.logger.Error("Failed to publish reserve inventory event", "error", err, "order_id", order.ID)
 		return err
@@ -300,7 +297,7 @@ func (kp *KafkaProducer) PublishReleaseInventory(ctx context.Context, order *ent
 	}
 
 	// Produce event to Kafka
-	err := kp.produceEvent(kp.topics.inventoryEvents, order.ID, payload)
+	err := kp.produceEvent(ctx, kp.topics.inventoryEvents, order.ID, payload)
 	if err != nil {
 		kp.logger.Error("Failed to publish release inventory event", "error", err, "order_id", order.ID)
 		return err
@@ -328,7 +325,7 @@ func (kp *KafkaProducer) PublishPaymentRequest(ctx context.Context, order *entit
 	}
 
 	// Produce event to Kafka
-	err := kp.produceEvent(kp.topics.paymentEvents, order.ID, payload)
+	err := kp.produceEvent(ctx, kp.topics.paymentEvents, order.ID, payload)
 	if err != nil {
 		kp.logger.Error("Failed to publish payment request event", "error", err, "order_id", order.ID)
 		return err

@@ -370,15 +370,15 @@ func (ou *orderUsecase) UpdateOrderPartial(ctx context.Context, id string, patch
 	}
 
 	// Update the order
-	updatedOrder, err = ou.orderRepo.Update(ctx, updatedOrder)
+	updatedOrderRes, err := ou.orderRepo.Update(ctx, updatedOrder)
 	if err != nil {
 		return nil, ou.errBuilder.Err(err)
 	}
 
 	// Publish order updated event
-	if err := ou.eventService.PublishOrderUpdated(ctx, updatedOrder); err != nil {
+	if err := ou.eventService.PublishOrderUpdated(ctx, updatedOrderRes); err != nil {
 		// Log error but continue
 	}
 
-	return updatedOrder, nil
+	return updatedOrderRes, nil
 }

@@ -4,14 +4,13 @@ package consumer
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/service"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/usecase"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/logger"
+	"github.com/segmentio/kafka-go"
 )
 
 // EventPayload defines the structure of the event payload
@@ -47,7 +46,8 @@ type PaymentProcessedPayload struct {
 
 // KafkaConsumer implements a Kafka consumer for order-related events
 type KafkaConsumer struct {
-	consumer     *kafka.Consumer
+	brokers      []string
+	groupID      string
 	orderUsecase usecase.OrderUsecase
 	logger       logger.Logger
 	topics       struct {
@@ -56,6 +56,7 @@ type KafkaConsumer struct {
 	}
 	wg       sync.WaitGroup
 	stopChan chan struct{}
+	readers  []*kafka.Reader
 }
 
 // NewKafkaConsumer creates a new KafkaConsumer
@@ -65,23 +66,16 @@ func NewKafkaConsumer(
 	orderUsecase usecase.OrderUsecase,
 	logger logger.Logger,
 ) (*KafkaConsumer, error) {
-	// Create Kafka consumer
-	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers":       brokers,
-		"group.id":                groupID,
-		"auto.offset.reset":       "earliest",
-		"enable.auto.commit":      true,
-		"auto.commit.interval.ms": 5000,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kafka consumer: %w", err)
-	}
+	// Parse brokers string into slice
+	brokersList := []string{brokers} // If single broker
 
 	kc := &KafkaConsumer{
-		consumer:     consumer,
+		brokers:      brokersList,
+		groupID:      groupID,
 		orderUsecase: orderUsecase,
 		logger:       logger,
 		stopChan:     make(chan struct{}),
+		readers:      make([]*kafka.Reader, 0),
 	}
 
 	// Set default topics
@@ -114,23 +108,43 @@ func (kc *KafkaConsumer) Close() error {
 	// Wait for all consumers to finish
 	kc.wg.Wait()
 
-	// Close the Kafka consumer
-	return kc.consumer.Close()
+	// Close all readers
+	for _, reader := range kc.readers {
+		if err := reader.Close(); err != nil {
+			kc.logger.Error("Failed to close Kafka reader", "error", err)
+		}
+	}
+
+	return nil
+}
+
+// createReader creates a new Kafka reader for the given topic
+func (kc *KafkaConsumer) createReader(topic string) *kafka.Reader {
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers:        kc.brokers,
+		Topic:          topic,
+		GroupID:        kc.groupID,
+		MinBytes:       10e3, // 10KB
+		MaxBytes:       10e6, // 10MB
+		CommitInterval: 1 * time.Second,
+		StartOffset:    kafka.FirstOffset, // Equivalent to "earliest"
+	})
+
+	// Add reader to the list
+	kc.readers = append(kc.readers, reader)
+
+	return reader
 }
 
 // SubscribeToInventoryEvents subscribes to inventory-related events
 func (kc *KafkaConsumer) SubscribeToInventoryEvents(ctx context.Context) error {
-	// Subscribe to inventory events topic
-	err := kc.consumer.Subscribe(kc.topics.inventoryEvents, nil)
-	if err != nil {
-		return fmt.Errorf("failed to subscribe to inventory events topic: %w", err)
-	}
+	reader := kc.createReader(kc.topics.inventoryEvents)
 
 	// Start goroutine to consume messages
 	kc.wg.Add(1)
 	go func() {
 		defer kc.wg.Done()
-		kc.consumeInventoryEvents(ctx)
+		kc.consumeInventoryEvents(ctx, reader)
 	}()
 
 	kc.logger.Info("Subscribed to inventory events", "topic", kc.topics.inventoryEvents)
@@ -139,17 +153,13 @@ func (kc *KafkaConsumer) SubscribeToInventoryEvents(ctx context.Context) error {
 
 // SubscribeToPaymentEvents subscribes to payment-related events
 func (kc *KafkaConsumer) SubscribeToPaymentEvents(ctx context.Context) error {
-	// Subscribe to payment events topic
-	err := kc.consumer.Subscribe(kc.topics.paymentEvents, nil)
-	if err != nil {
-		return fmt.Errorf("failed to subscribe to payment events topic: %w", err)
-	}
+	reader := kc.createReader(kc.topics.paymentEvents)
 
 	// Start goroutine to consume messages
 	kc.wg.Add(1)
 	go func() {
 		defer kc.wg.Done()
-		kc.consumePaymentEvents(ctx)
+		kc.consumePaymentEvents(ctx, reader)
 	}()
 
 	kc.logger.Info("Subscribed to payment events", "topic", kc.topics.paymentEvents)
@@ -157,7 +167,7 @@ func (kc *KafkaConsumer) SubscribeToPaymentEvents(ctx context.Context) error {
 }
 
 // consumeInventoryEvents consumes messages from the inventory events topic
-func (kc *KafkaConsumer) consumeInventoryEvents(ctx context.Context) {
+func (kc *KafkaConsumer) consumeInventoryEvents(ctx context.Context, reader *kafka.Reader) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -167,24 +177,34 @@ func (kc *KafkaConsumer) consumeInventoryEvents(ctx context.Context) {
 			kc.logger.Info("Stopping inventory events consumer")
 			return
 		default:
-			// Poll for messages
-			msg, err := kc.consumer.ReadMessage(100 * time.Millisecond)
+			// Set a timeout for the read operation
+			readCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+			msg, err := reader.FetchMessage(readCtx)
+			cancel()
+
 			if err != nil {
 				// Timeout or no message
-				if !err.(kafka.Error).IsTimeout() {
-					kc.logger.Error("Failed to read message", "error", err)
+				if err == context.DeadlineExceeded {
+					// This is just a timeout, continue
+					continue
 				}
+				kc.logger.Error("Failed to read message", "error", err)
 				continue
 			}
 
 			// Process message
-			kc.processInventoryEvent(ctx, msg)
+			kc.processInventoryEvent(ctx, &msg)
+
+			// Commit the message
+			if err := reader.CommitMessages(ctx, msg); err != nil {
+				kc.logger.Error("Failed to commit message", "error", err)
+			}
 		}
 	}
 }
 
 // consumePaymentEvents consumes messages from the payment events topic
-func (kc *KafkaConsumer) consumePaymentEvents(ctx context.Context) {
+func (kc *KafkaConsumer) consumePaymentEvents(ctx context.Context, reader *kafka.Reader) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -194,18 +214,28 @@ func (kc *KafkaConsumer) consumePaymentEvents(ctx context.Context) {
 			kc.logger.Info("Stopping payment events consumer")
 			return
 		default:
-			// Poll for messages
-			msg, err := kc.consumer.ReadMessage(100 * time.Millisecond)
+			// Set a timeout for the read operation
+			readCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+			msg, err := reader.FetchMessage(readCtx)
+			cancel()
+
 			if err != nil {
 				// Timeout or no message
-				if !err.(kafka.Error).IsTimeout() {
-					kc.logger.Error("Failed to read message", "error", err)
+				if err == context.DeadlineExceeded {
+					// This is just a timeout, continue
+					continue
 				}
+				kc.logger.Error("Failed to read message", "error", err)
 				continue
 			}
 
 			// Process message
-			kc.processPaymentEvent(ctx, msg)
+			kc.processPaymentEvent(ctx, &msg)
+
+			// Commit the message
+			if err := reader.CommitMessages(ctx, msg); err != nil {
+				kc.logger.Error("Failed to commit message", "error", err)
+			}
 		}
 	}
 }
