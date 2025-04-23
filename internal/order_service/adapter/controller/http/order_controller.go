@@ -2,7 +2,9 @@
 package httpctl
 
 import (
+	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/adapter/dto"
@@ -92,8 +94,42 @@ func (h *OrderHandler) ListOrders(c *fiber.Ctx) error {
 
 	// Build filters from query parameters
 	filters := make(map[string]interface{})
-	if status := c.Query("status"); status != "" {
-		filters["status"] = status
+	fmt.Println("queries", c.Queries())
+	for key, value := range c.Queries() {
+		switch key {
+		case "status":
+			filters["status"] = value
+		case "user_id":
+			filters["user_id"] = value
+		case "created_after":
+			createdAfter, err := time.Parse(time.RFC3339, value)
+			if err != nil {
+				h.logger.Error("Invalid date format for created_after", "error", err)
+				return HandleError(c, ErrBadRequest)
+			}
+			filters["created_after"] = createdAfter
+		case "created_before":
+			createdBefore, err := time.Parse(time.RFC3339, value)
+			if err != nil {
+				h.logger.Error("Invalid date format for created_before", "error", err)
+				return HandleError(c, ErrBadRequest)
+			}
+			filters["created_before"] = createdBefore
+		case "min_total_amount":
+			minTotal, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				h.logger.Error("Invalid number format for min_total_amount", "error", err)
+				return HandleError(c, ErrBadRequest)
+			}
+			filters["min_total_amount"] = minTotal
+		case "max_total_amount":
+			maxTotal, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				h.logger.Error("Invalid number format for max_total_amount", "error", err)
+				return HandleError(c, ErrBadRequest)
+			}
+			filters["max_total_amount"] = maxTotal
+		}
 	}
 
 	ctx := c.Context()

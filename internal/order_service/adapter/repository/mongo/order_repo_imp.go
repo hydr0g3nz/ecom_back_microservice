@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/adapter/repository/mongo/model"
@@ -161,7 +162,8 @@ func (r *MongoOrderRepository) List(ctx context.Context, offset, limit int, filt
 		SetSkip(int64(offset)).
 		SetLimit(int64(limit)).
 		SetSort(bson.D{{Key: "created_at", Value: -1}}) // Sort by created_at descending
-
+	fmt.Println("filter", filter)
+	fmt.Println("filterS", filters)
 	// Find orders in MongoDB
 	cursor, err := r.collection.Find(ctx, filter, findOptions)
 	if err != nil {

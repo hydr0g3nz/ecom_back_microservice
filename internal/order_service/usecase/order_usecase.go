@@ -3,6 +3,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -98,18 +99,21 @@ func (ou *orderUsecase) CreateOrder(ctx context.Context, order *entity.Order) (*
 	if err != nil {
 		return nil, ou.errBuilder.Err(err)
 	}
+	go func() {
 
-	// Publish order created event
-	if err := ou.eventService.PublishOrderCreated(ctx, createdOrder); err != nil {
-		// Log error but continue
-		// In a real system, you might want to implement retry logic or compensating actions
-	}
+		// Publish order created event
+		if err := ou.eventService.PublishOrderCreated(ctx, createdOrder); err != nil {
+			fmt.Println("Error publishing order created event:", err)
+			// In a real system, you might want to implement retry logic or compensating actions
+		}
 
-	// Request inventory reservation
-	if err := ou.eventService.PublishReserveInventory(ctx, createdOrder); err != nil {
-		// Log error but continue
-		// In a real system, you might want to implement retry logic
-	}
+		// Request inventory reservation
+		if err := ou.eventService.PublishReserveInventory(ctx, createdOrder); err != nil {
+			fmt.Println("Error publishing reserve inventory event:", err)
+			// Log error but continue
+			// In a real system, you might want to implement retry logic
+		}
+	}()
 
 	return createdOrder, nil
 }
