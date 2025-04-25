@@ -48,20 +48,20 @@ type OrderUsecase interface {
 
 // orderUsecase implements the OrderUsecase interface
 type orderUsecase struct {
-	orderRepo    repository.OrderRepository
-	eventService service.EventService
-	errBuilder   *utils.ErrorBuilder
+	orderRepo  repository.OrderRepository
+	eventPub   service.EventPublisherService
+	errBuilder *utils.ErrorBuilder
 }
 
 // NewOrderUsecase creates a new instance of OrderUsecase
 func NewOrderUsecase(
 	or repository.OrderRepository,
-	es service.EventService,
+	es service.EventPublisherService,
 ) OrderUsecase {
 	return &orderUsecase{
-		orderRepo:    or,
-		eventService: es,
-		errBuilder:   utils.NewErrorBuilder("OrderUsecase"),
+		orderRepo:  or,
+		eventPub:   es,
+		errBuilder: utils.NewErrorBuilder("OrderUsecase"),
 	}
 }
 
@@ -102,13 +102,13 @@ func (ou *orderUsecase) CreateOrder(ctx context.Context, order *entity.Order) (*
 	go func() {
 
 		// Publish order created event
-		if err := ou.eventService.PublishOrderCreated(ctx, createdOrder); err != nil {
+		if err := ou.eventPub.PublishOrderCreated(ctx, createdOrder); err != nil {
 			fmt.Println("Error publishing order created event:", err)
 			// In a real system, you might want to implement retry logic or compensating actions
 		}
 
 		// Request inventory reservation
-		if err := ou.eventService.PublishReserveInventory(ctx, createdOrder); err != nil {
+		if err := ou.eventPub.PublishReserveInventory(ctx, createdOrder); err != nil {
 			fmt.Println("Error publishing reserve inventory event:", err)
 			// Log error but continue
 			// In a real system, you might want to implement retry logic
@@ -149,6 +149,10 @@ func (ou *orderUsecase) ListOrders(ctx context.Context, page, pageSize int, filt
 
 // UpdateOrder updates an existing order
 func (ou *orderUsecase) UpdateOrder(ctx context.Context, id string, order entity.Order) (*entity.Order, error) {
+	// Validate order data
+	if err := order.ValidateOrder(); err != nil {
+		return nil, ou.errBuilder.Err(err)
+	}
 	// Ensure the order exists
 	existingOrder, err := ou.orderRepo.GetByID(ctx, id)
 	if err != nil {
@@ -171,7 +175,7 @@ func (ou *orderUsecase) UpdateOrder(ctx context.Context, id string, order entity
 	}
 
 	// Publish order updated event
-	if err := ou.eventService.PublishOrderUpdated(ctx, updatedOrder); err != nil {
+	if err := ou.eventPub.PublishOrderUpdated(ctx, updatedOrder); err != nil {
 		// Log error but continue
 	}
 
@@ -200,17 +204,28 @@ func (ou *orderUsecase) UpdateOrderStatus(ctx context.Context, id string, status
 	// Publish appropriate events based on the new status
 	switch status {
 	case valueobject.OrderStatusCancelled:
-		ou.eventService.PublishOrderCancelled(ctx, updatedOrder)
-		ou.eventService.PublishReleaseInventory(ctx, updatedOrder)
+		if err := ou.eventPub.PublishOrderCancelled(ctx, updatedOrder); err != nil {
+			// Log error but continue
+			fmt.Println("Error publishing order cancelled event:", err)
+		}
+		if err := ou.eventPub.PublishReleaseInventory(ctx, updatedOrder); err != nil {
+			// Log error but continue
+			fmt.Println("Error publishing release inventory event:", err)
+		}
 	case valueobject.OrderStatusCompleted:
-		ou.eventService.PublishOrderCompleted(ctx, updatedOrder)
+		if err := ou.eventPub.PublishOrderCompleted(ctx, updatedOrder); err != nil {
+			// Log error but continue
+			fmt.Println("Error publishing order completed event:", err)
+		}
 	case valueobject.OrderStatusProcessing:
 		// If transitioning to processing, request payment
 		if existingOrder.Status == valueobject.OrderStatusPending {
-			ou.eventService.PublishPaymentRequest(ctx, updatedOrder)
+			if err := ou.eventPub.PublishPaymentRequest(ctx, updatedOrder); err != nil {
+				// Log error but continue
+				fmt.Println("Error publishing payment request event:", err)
+			}
 		}
 	}
-
 	return updatedOrder, nil
 }
 
@@ -226,7 +241,7 @@ func (ou *orderUsecase) ProcessInventoryReserved(ctx context.Context, orderID st
 	if err != nil {
 		return nil, ou.errBuilder.Err(err)
 	}
-
+	fmt.Println("order", order)
 	// Update order based on inventory reservation result
 	if success {
 		// If inventory is successfully reserved and order is still pending, proceed to payment
@@ -237,8 +252,9 @@ func (ou *orderUsecase) ProcessInventoryReserved(ctx context.Context, orderID st
 			}
 
 			// Request payment processing
-			if err := ou.eventService.PublishPaymentRequest(ctx, updatedOrder); err != nil {
+			if err := ou.eventPub.PublishPaymentRequest(ctx, updatedOrder); err != nil {
 				// Log error but continue
+				fmt.Println("Error publishing payment request event:", err)
 			}
 
 			return updatedOrder, nil
@@ -275,7 +291,8 @@ func (ou *orderUsecase) ProcessPaymentCompleted(ctx context.Context, orderID str
 		}
 
 		// Release reserved inventory
-		if err := ou.eventService.PublishReleaseInventory(ctx, updatedOrder); err != nil {
+		if err := ou.eventPub.PublishReleaseInventory(ctx, updatedOrder); err != nil {
+			fmt.Println("Error publishing release inventory event:", err)
 			// Log error but continue
 		}
 
@@ -380,7 +397,7 @@ func (ou *orderUsecase) UpdateOrderPartial(ctx context.Context, id string, patch
 	}
 
 	// Publish order updated event
-	if err := ou.eventService.PublishOrderUpdated(ctx, updatedOrderRes); err != nil {
+	if err := ou.eventPub.PublishOrderUpdated(ctx, updatedOrderRes); err != nil {
 		// Log error but continue
 	}
 

@@ -40,7 +40,8 @@ type Repositories struct {
 
 // Services holds all service implementations
 type Services struct {
-	EventService service.EventService
+	EventPublisher  service.EventPublisherService
+	EventSubscriber service.EventSubscriberService
 }
 
 // Usecases holds all usecase implementations
@@ -98,9 +99,10 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to initialize Kafka producer", "error", err)
 	}
-
+	eventServicePublisher := eventSvc.NewKafkaEventPublisherService(kafkaProducer, log)
 	// Initialize usecases
-	usecases := initUsecases(repositories, nil) // We'll set event service after initializing usecases
+	// usecases := initUsecases(repositories, nil) // We'll set event service after initializing usecases
+	usecases := initUsecases(repositories, eventServicePublisher)
 
 	// Initialize Kafka consumer (needs usecase)
 	kafkaConsumer, err := consumer.NewKafkaConsumer(
@@ -114,17 +116,17 @@ func main() {
 	}
 
 	// Initialize event service
-	eventService := eventSvc.NewKafkaEventService(kafkaProducer, kafkaConsumer, log)
+
+	// eventServiceSubscriber := eventSvc.NewKafkaEventSubscriberService(kafkaConsumer, log)
 
 	// Update usecases with event service
-	usecases = initUsecases(repositories, eventService)
 
 	// Start Kafka consumer
 	if err := kafkaConsumer.Start(ctx); err != nil {
 		log.Fatal("Failed to start Kafka consumer", "error", err)
 	}
 	defer func() {
-		if err := eventService.Close(); err != nil {
+		if err := eventServicePublisher.Close(); err != nil {
 			log.Error("Failed to close event service", "error", err)
 		}
 	}()
@@ -174,7 +176,7 @@ func initRepositories(db *mongo.Database) *Repositories {
 }
 
 // initUsecases initializes all usecases
-func initUsecases(repos *Repositories, eventService service.EventService) *Usecases {
+func initUsecases(repos *Repositories, eventService service.EventPublisherService) *Usecases {
 	return &Usecases{
 		OrderUsecase: usecase.NewOrderUsecase(repos.OrderRepository, eventService),
 	}

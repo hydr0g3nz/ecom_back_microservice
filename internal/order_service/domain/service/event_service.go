@@ -22,8 +22,8 @@ const (
 	EventTypePaymentFailed     = "payment.failed"
 )
 
-// EventService defines the interface for event-driven communication
-type EventService interface {
+// EventPublisher defines the interface for publishing events
+type EventPublisherService interface {
 	// PublishOrderCreated publishes an event that a new order has been created
 	PublishOrderCreated(ctx context.Context, order *entity.Order) error
 
@@ -44,13 +44,17 @@ type EventService interface {
 
 	// PublishPaymentRequest publishes a request to process payment for an order
 	PublishPaymentRequest(ctx context.Context, order *entity.Order) error
+	Close() error
+}
 
+// EventSubscriber defines the interface for subscribing to events
+type EventSubscriberService interface {
 	// SubscribeToInventoryEvents subscribes to inventory-related events
 	SubscribeToInventoryEvents(ctx context.Context) error
 
 	// SubscribeToPaymentEvents subscribes to payment-related events
 	SubscribeToPaymentEvents(ctx context.Context) error
-
-	// Close closes all event connections
 	Close() error
 }
+
+// EventService combines both EventPublisher and EventSubscriber

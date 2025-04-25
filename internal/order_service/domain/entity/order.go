@@ -2,6 +2,7 @@
 package entity
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/domain/valueobject"
@@ -97,6 +98,8 @@ func (o *Order) ValidateOrder() error {
 // CanTransitionToStatus checks if the order can transition to the given status
 func (o *Order) CanTransitionToStatus(newStatus valueobject.OrderStatus) bool {
 	// Define valid status transitions based on current status
+	fmt.Println("Current status:", o.Status)
+	fmt.Println("New status:", newStatus)
 	switch o.Status {
 	case valueobject.OrderStatusPending:
 		return newStatus == valueobject.OrderStatusProcessing ||
