@@ -2,12 +2,11 @@ package repository
 
 import (
 	"context"
-	"errors"
+	"time"
 
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/product_service/adapter/repository/gorm/model"
-	"github.com/hydr0g3nz/ecom_back_microservice/internal/product_service/domain/entity"
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/adapter/repository/gorm/model"
+	"github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/domain/entity"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // GormInventoryRepository implements InventoryRepository interface using GORM
@@ -15,114 +14,156 @@ type GormInventoryRepository struct {
 	db *gorm.DB
 }
 
-// NewGormInventoryRepository creates a new instance of GormInventoryRepository
+// NewGormInventoryRepository creates a new inventory repository instance
 func NewGormInventoryRepository(db *gorm.DB) *GormInventoryRepository {
 	return &GormInventoryRepository{db: db}
 }
 
-// Create stores a new inventory record
-func (r *GormInventoryRepository) Create(ctx context.Context, inventory entity.Inventory) (*entity.Inventory, error) {
-	inventoryModel := model.NewInventoryModel(&inventory)
-	err := r.db.WithContext(ctx).Create(inventoryModel).Error
+// GetInventoryItem retrieves an inventory item by SKU
+func (r *GormInventoryRepository) GetInventoryItem(ctx context.Context, sku string) (*entity.InventoryItem, error) {
+	var item model.InventoryItem
+	err := r.db.WithContext(ctx).Where("sku = ?", sku).First(&item).Error
 	if err != nil {
 		return nil, err
 	}
-	return inventoryModel.ToEntity(), nil
+	return item.ToEntity(), nil
 }
 
-// GetByProductID retrieves inventory by product ID
-func (r *GormInventoryRepository) GetByProductID(ctx context.Context, productID string) (*entity.Inventory, error) {
-	var inventoryModel model.Inventory
-	err := r.db.WithContext(ctx).Where("product_id = ?", productID).First(&inventoryModel).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, entity.ErrInventoryNotFound
-		}
-		return nil, err
-	}
-	return inventoryModel.ToEntity(), nil
-}
-
-// Update updates an existing inventory
-func (r *GormInventoryRepository) Update(ctx context.Context, inventory entity.Inventory) (*entity.Inventory, error) {
-	inventoryModel := model.NewInventoryModel(&inventory)
-	err := r.db.WithContext(ctx).Save(inventoryModel).Error
+// CreateInventoryItem creates a new inventory item
+func (r *GormInventoryRepository) CreateInventoryItem(ctx context.Context, item *entity.InventoryItem) (*entity.InventoryItem, error) {
+	itemModel := model.NewInventoryItemModel(item)
+	err := r.db.WithContext(ctx).Create(itemModel).Error
 	if err != nil {
 		return nil, err
 	}
-	return inventoryModel.ToEntity(), nil
+	return itemModel.ToEntity(), nil
 }
 
-// UpdateQuantity updates just the quantity of a product
-func (r *GormInventoryRepository) UpdateQuantity(ctx context.Context, productID string, quantity int) error {
-	result := r.db.WithContext(ctx).Model(&model.Inventory{}).
-		Where("product_id = ?", productID).
-		Update("quantity", quantity)
+// UpdateInventoryItem updates an existing inventory item
+func (r *GormInventoryRepository) UpdateInventoryItem(ctx context.Context, item *entity.InventoryItem) (*entity.InventoryItem, error) {
+	itemModel := model.NewInventoryItemModel(item)
+	itemModel.UpdatedAt = time.Now()
+	err := r.db.WithContext(ctx).Save(itemModel).Error
+	if err != nil {
+		return nil, err
+	}
+	return itemModel.ToEntity(), nil
+}
 
-	if result.Error != nil {
-		return result.Error
+// CreateReservation creates a new inventory reservation
+func (r *GormInventoryRepository) CreateReservation(ctx context.Context, reservation *entity.InventoryReservation) (*entity.InventoryReservation, error) {
+	reservationModel := model.NewInventoryReservationModel(reservation)
+	err := r.db.WithContext(ctx).Create(reservationModel).Error
+	if err != nil {
+		return nil, err
+	}
+	return reservationModel.ToEntity(), nil
+}
+
+// GetReservationByID retrieves a reservation by ID
+func (r *GormInventoryRepository) GetReservationByID(ctx context.Context, reservationID string) (*entity.InventoryReservation, error) {
+	var reservation model.InventoryReservation
+	err := r.db.WithContext(ctx).Where("reservation_id = ?", reservationID).First(&reservation).Error
+	if err != nil {
+		return nil, err
+	}
+	return reservation.ToEntity(), nil
+}
+
+// GetReservationsByOrderID retrieves all reservations for an order
+func (r *GormInventoryRepository) GetReservationsByOrderID(ctx context.Context, orderID string) ([]*entity.InventoryReservation, error) {
+	var reservations []model.InventoryReservation
+	err := r.db.WithContext(ctx).Where("order_id = ?", orderID).Find(&reservations).Error
+	if err != nil {
+		return nil, err
 	}
 
-	if result.RowsAffected == 0 {
-		return entity.ErrInventoryNotFound
+	result := make([]*entity.InventoryReservation, len(reservations))
+	for i, res := range reservations {
+		result[i] = res.ToEntity()
+	}
+	return result, nil
+}
+
+// UpdateReservation updates an existing reservation
+func (r *GormInventoryRepository) UpdateReservation(ctx context.Context, reservation *entity.InventoryReservation) (*entity.InventoryReservation, error) {
+	reservationModel := model.NewInventoryReservationModel(reservation)
+	err := r.db.WithContext(ctx).Save(reservationModel).Error
+	if err != nil {
+		return nil, err
+	}
+	return reservationModel.ToEntity(), nil
+}
+
+// DeleteReservation deletes a reservation
+func (r *GormInventoryRepository) DeleteReservation(ctx context.Context, reservationID string) error {
+	return r.db.WithContext(ctx).Where("reservation_id = ?", reservationID).Delete(&model.InventoryReservation{}).Error
+}
+
+// RecordStockTransaction records a stock transaction
+func (r *GormInventoryRepository) RecordStockTransaction(ctx context.Context, transaction *entity.StockTransaction) (*entity.StockTransaction, error) {
+	transactionModel := model.NewStockTransactionModel(transaction)
+	err := r.db.WithContext(ctx).Create(transactionModel).Error
+	if err != nil {
+		return nil, err
+	}
+	return transactionModel.ToEntity(), nil
+}
+
+// GetStockTransactions retrieves stock transactions for a SKU
+func (r *GormInventoryRepository) GetStockTransactions(ctx context.Context, sku string, limit, offset int) ([]*entity.StockTransaction, int, error) {
+	var transactions []model.StockTransaction
+	var total int64
+
+	// Get total count
+	err := r.db.WithContext(ctx).Model(&model.StockTransaction{}).Where("sku = ?", sku).Count(&total).Error
+	if err != nil {
+		return nil, 0, err
 	}
 
-	return nil
+	// Get paginated results
+	err = r.db.WithContext(ctx).Where("sku = ?", sku).
+		Order("occurred_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&transactions).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]*entity.StockTransaction, len(transactions))
+	for i, tx := range transactions {
+		result[i] = tx.ToEntity()
+	}
+	return result, int(total), nil
 }
 
-// ReserveStock reserves stock for a product (for order processing)
-func (r *GormInventoryRepository) ReserveStock(ctx context.Context, productID string, quantity int) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var inventoryModel model.Inventory
+// GetLowStockItems retrieves items with stock below their reorder level
+func (r *GormInventoryRepository) GetLowStockItems(ctx context.Context, limit, offset int) ([]*entity.InventoryItem, int, error) {
+	var items []model.InventoryItem
+	var total int64
 
-		// Use correct FOR UPDATE clause
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("product_id = ?", productID).
-			First(&inventoryModel).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return entity.ErrInventoryNotFound
-			}
-			return err
-		}
+	// Get total count
+	err := r.db.WithContext(ctx).Model(&model.InventoryItem{}).
+		Where("available_qty <= reorder_level").
+		Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
 
-		availableStock := inventoryModel.Quantity - inventoryModel.Reserved
-		if availableStock < quantity {
-			return entity.ErrInsufficientStock
-		}
+	// Get paginated results
+	err = r.db.WithContext(ctx).Where("available_qty <= reorder_level").
+		Order("updated_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&items).Error
+	if err != nil {
+		return nil, 0, err
+	}
 
-		if err := tx.Model(&inventoryModel).
-			Update("reserved", inventoryModel.Reserved+quantity).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
-}
-
-// ReleaseReservedStock releases reserved stock back to available
-func (r *GormInventoryRepository) ReleaseReservedStock(ctx context.Context, productID string, quantity int) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var inventoryModel model.Inventory
-
-		// Use correct FOR UPDATE clause
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("product_id = ?", productID).
-			First(&inventoryModel).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return entity.ErrInventoryNotFound
-			}
-			return err
-		}
-
-		if inventoryModel.Reserved < quantity {
-			quantity = inventoryModel.Reserved
-		}
-
-		if err := tx.Model(&inventoryModel).
-			Update("reserved", inventoryModel.Reserved-quantity).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
+	result := make([]*entity.InventoryItem, len(items))
+	for i, item := range items {
+		result[i] = item.ToEntity()
+	}
+	return result, int(total), nil
 }

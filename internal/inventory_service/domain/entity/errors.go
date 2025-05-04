@@ -1,23 +1,17 @@
+// internal/inventory_service/domain/entity/errors.go
 package entity
 
 import "errors"
 
 var (
-	// Product errors
-	ErrProductNotFound      = errors.New("product not found")
-	ErrProductAlreadyExists = errors.New("product already exists")
-	ErrProductSKUExists     = errors.New("product SKU already exists")
-	ErrInvalidProductData   = errors.New("invalid product data")
-
-	// Category errors
-	ErrCategoryNotFound      = errors.New("category not found")
-	ErrCategoryAlreadyExists = errors.New("category already exists")
-	ErrInvalidCategoryData   = errors.New("invalid category data")
-
-	// Inventory errors
-	ErrInventoryNotFound = errors.New("inventory not found")
-	ErrInsufficientStock = errors.New("insufficient stock")
-
-	// Generic errors
-	ErrInternalServerError = errors.New("internal server error")
+	ErrInventoryNotFound  = errors.New("inventory item not found")
+	ErrInsufficientStock  = errors.New("insufficient stock for reservation")
+	ErrInvalidProductData = errors.New("invalid product data")
+	// Add other domain-specific errors here
 )
+
+// Re-declare user service errors if they are needed for shared HandleError function
+// Or, ideally, HandleError should be more generic or separated.
+// For this example, let's assume ErrInventoryNotFound and ErrInsufficientStock
+// are the main new errors to handle explicitly.
+// If you need user errors in a shared handler, you'd import the user service entity errors package.
