@@ -11,6 +11,7 @@ import (
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/domain/entity"
 	uc "github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/usecase"
 	"github.com/hydr0g3nz/ecom_back_microservice/pkg/logger"
+	"gorm.io/gorm"
 )
 
 // InventoryHandler handles HTTP requests for the inventory service
@@ -68,6 +69,9 @@ func (h *InventoryHandler) handleInventoryError(c *fiber.Ctx, err error) error {
 	case errors.Is(err, entity.ErrInvalidProductData):
 		statusCode = http.StatusBadRequest
 		message = "Invalid product data"
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		statusCode = http.StatusNotFound
+		message = "Record not found"
 	// Add other specific domain errors here
 	default:
 		// Fallback for unexpected errors

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/product_service/domain/entity"
+	"gorm.io/gorm"
 )
 
 var (
@@ -62,6 +63,9 @@ func HandleError(c *fiber.Ctx, err error) error {
 	case errors.Is(err, entity.ErrInternalServerError):
 		statusCode = http.StatusInternalServerError
 		message = "Internal server error"
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		statusCode = http.StatusNotFound
+		message = "Record not found"
 	default:
 		statusCode = http.StatusInternalServerError
 		message = "Something went wrong"
