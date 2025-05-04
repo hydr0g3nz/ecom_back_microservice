@@ -1,4 +1,3 @@
-// internal/product_service/config/config.go
 package config
 
 import (
@@ -6,14 +5,16 @@ import (
 	"os"
 	"time"
 
+	messaging "github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/adapter/event"
 	"gopkg.in/yaml.v3"
 )
 
 // Config holds all application configuration
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
-	GRPC     GRPCConfig     `yaml:"grpc"`
+	Server    ServerConfig          `yaml:"server"`
+	Database  DatabaseConfig        `yaml:"database"`
+	GRPC      GRPCConfig            `yaml:"grpc"`
+	Messaging messaging.KafkaConfig `yaml:"messaging"`
 }
 
 // ServerConfig contains HTTP server configuration
@@ -61,8 +62,14 @@ func LoadConfig(configPath string) (*Config, error) {
 			MaxOpen:  25,
 			MaxLife:  5 * time.Minute,
 		},
-		GRPC: GRPCConfig{
-			Port: "50052", // Different port from user service
+		// GRPC: GRPCConfig{
+		// 	Port: "50052", // Different port from user service
+		// },
+		Messaging: messaging.KafkaConfig{
+			Brokers:         []string{"localhost:9092"},
+			InventoryTopic:  "inventory_events",
+			OrderTopic:      "order_events",
+			ConsumerGroupID: "inventory_service",
 		},
 	}
 
@@ -87,29 +94,29 @@ func LoadConfig(configPath string) (*Config, error) {
 // overrideWithEnv overrides config with environment variables
 func overrideWithEnv(config *Config) *Config {
 	// Server
-	if value := os.Getenv("PRODUCT_SERVER_ADDR"); value != "" {
+	if value := os.Getenv("INVENTORY_SERVER_ADDR"); value != "" {
 		config.Server.Address = value
 	}
 
 	// Database
-	if value := os.Getenv("PRODUCT_DB_USER"); value != "" {
+	if value := os.Getenv("INVENTORY_DB_USER"); value != "" {
 		config.Database.User = value
 	}
-	if value := os.Getenv("PRODUCT_DB_PASSWORD"); value != "" {
+	if value := os.Getenv("INVENTORY_DB_PASSWORD"); value != "" {
 		config.Database.Password = value
 	}
-	if value := os.Getenv("PRODUCT_DB_HOST"); value != "" {
+	if value := os.Getenv("INVENTORY_DB_HOST"); value != "" {
 		config.Database.Host = value
 	}
-	if value := os.Getenv("PRODUCT_DB_PORT"); value != "" {
+	if value := os.Getenv("INVENTORY_DB_PORT"); value != "" {
 		config.Database.Port = value
 	}
-	if value := os.Getenv("PRODUCT_DB_NAME"); value != "" {
+	if value := os.Getenv("INVENTORY_DB_NAME"); value != "" {
 		config.Database.Name = value
 	}
 
 	// GRPC
-	if value := os.Getenv("PRODUCT_GRPC_PORT"); value != "" {
+	if value := os.Getenv("INVENTORY_GRPC_PORT"); value != "" {
 		config.GRPC.Port = value
 	}
 

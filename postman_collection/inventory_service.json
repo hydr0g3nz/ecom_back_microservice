@@ -1,0 +1,310 @@
+{
+  "info": {
+    "_postman_id": "replace-with-your-postman-id",
+    "name": "Inventory Service",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_collection_link": ""
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Inventory Items",
+      "item": [
+        {
+          "name": "Create Inventory Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"sku\": \"ITEM-SKU-001\",\n    \"name\": \"Sample Product 1\",\n    \"description\": \"Description for sample product 1\",\n    \"available_qty\": 100,\n    \"reserved_qty\": 0,\n    \"sold_qty\": 0,\n    \"reorder_level\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/inventory",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory"]
+            },
+            "description": "Creates a new inventory item."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Inventory Item by SKU",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/inventory/{{sku}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "{{sku}}"],
+              "variable": [
+                {
+                  "key": "sku",
+                  "value": "ITEM-SKU-001",
+                  "description": "SKU of the inventory item"
+                }
+              ]
+            },
+            "description": "Retrieves inventory information for a specific product SKU."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Inventory Item",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Updated Sample Product 1\",\n    \"description\": \"Updated description\",\n    \"available_qty\": 95,\n    \"reserved_qty\": 5,\n    \"sold_qty\": 10,\n    \"reorder_level\": 15\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/inventory/{{sku}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "{{sku}}"],
+              "variable": [
+                {
+                  "key": "sku",
+                  "value": "ITEM-SKU-001",
+                  "description": "SKU of the inventory item to update"
+                }
+              ]
+            },
+            "description": "Updates an existing inventory item."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Stock Management",
+      "item": [
+        {
+          "name": "Add Stock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"quantity\": 50,\n    \"reference_id\": \"PO-12345\" \n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/inventory/{{sku}}/stock/add",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "{{sku}}", "stock", "add"],
+              "variable": [
+                {
+                  "key": "sku",
+                  "value": "ITEM-SKU-001",
+                  "description": "SKU to add stock to"
+                }
+              ]
+            },
+            "description": "Adds stock quantity to an inventory item."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reservations",
+      "item": [
+        {
+          "name": "Reserve Stock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"order_id\": \"ORDER-XYZ-789\",\n    \"items\": {\n        \"ITEM-SKU-001\": 2,\n        \"ITEM-SKU-002\": 1\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/inventory/reserve",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "reserve"]
+            },
+            "description": "Reserves stock for an order. Checks available stock first."
+          },
+          "response": []
+        },
+        {
+          "name": "Complete Reservation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/inventory/{{orderID}}/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "{{orderID}}", "complete"],
+              "variable": [
+                {
+                  "key": "orderID",
+                  "value": "ORDER-XYZ-789",
+                  "description": "ID of the order whose reservations are to be completed"
+                }
+              ]
+            },
+            "description": "Marks reservations for an order as completed and deducts stock from reserved to sold."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Reservation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/inventory/{{orderID}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "{{orderID}}", "cancel"],
+              "variable": [
+                {
+                  "key": "orderID",
+                  "value": "ORDER-ABC-123",
+                  "description": "ID of the order whose reservations are to be cancelled"
+                }
+              ]
+            },
+            "description": "Cancels reservations for an order and releases stock back to available."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Reservations by Order ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/inventory/reservations/{{orderID}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "reservations", "{{orderID}}"],
+              "variable": [
+                {
+                  "key": "orderID",
+                  "value": "ORDER-XYZ-789",
+                  "description": "ID of the order to retrieve reservations for"
+                }
+              ]
+            },
+            "description": "Gets all reservations for a specific order ID."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Get Stock Transaction History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/inventory/{{sku}}/transactions?page=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "{{sku}}", "transactions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (starting from 1)",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10",
+                  "description": "Number of items per page",
+                  "disabled": false
+                }
+              ],
+              "variable": [
+                {
+                  "key": "sku",
+                  "value": "ITEM-SKU-001",
+                  "description": "SKU to get transaction history for"
+                }
+              ]
+            },
+            "description": "Gets the stock transaction history for a specific SKU with pagination."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Low Stock Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/inventory/low-stock?page=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "low-stock"]
+            },
+            "query": [
+              {
+                "key": "page",
+                "value": "1",
+                "description": "Page number (starting from 1)",
+                "disabled": false
+              },
+              {
+                "key": "pageSize",
+                "value": "10",
+                "description": "Number of items per page",
+                "disabled": false
+              }
+            ],
+            "description": "Gets items with stock quantity below their reorder level, with pagination."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

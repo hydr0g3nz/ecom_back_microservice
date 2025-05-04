@@ -35,6 +35,8 @@ run-product:
 
 run-order:
 	go run cmd/order_service/main.go -config=config.order.local.yaml
+run-inventory:
+	go run cmd/inventory_service/main.go -config=config.inventory.local.yaml
 
 # Generate gRPC code from protobuf
 proto-gen: proto-gen-user proto-gen-product proto-gen-order
