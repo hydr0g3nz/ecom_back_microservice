@@ -237,75 +237,75 @@ func (kp *KafkaProducer) PublishOrderCompleted(ctx context.Context, order *entit
 	return nil
 }
 
-// PublishReserveInventory publishes a request to reserve inventory for an order
-func (kp *KafkaProducer) PublishReserveInventory(ctx context.Context, order *entity.Order) error {
-	// Create order items data
-	items := make([]OrderItemData, len(order.Items))
-	for i, item := range order.Items {
-		items[i] = OrderItemData{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			Price:     item.Price,
-		}
-	}
+// // PublishReserveInventory publishes a request to reserve inventory for an order
+// func (kp *KafkaProducer) PublishReserveInventory(ctx context.Context, order *entity.Order) error {
+// 	// Create order items data
+// 	items := make([]OrderItemData, len(order.Items))
+// 	for i, item := range order.Items {
+// 		items[i] = OrderItemData{
+// 			ProductID: item.ProductID,
+// 			Quantity:  item.Quantity,
+// 			Price:     item.Price,
+// 		}
+// 	}
 
-	// Create event payload
-	payload := EventPayload{
-		EventID:     fmt.Sprintf("evt_%d", time.Now().UnixNano()),
-		EventType:   service.EventTypeReserveInventory,
-		OccurredAt:  time.Now(),
-		OrderID:     order.ID,
-		UserID:      order.UserID,
-		TotalAmount: order.TotalAmount,
-		Status:      order.Status.String(),
-		Items:       items,
-	}
+// 	// Create event payload
+// 	payload := EventPayload{
+// 		EventID:     fmt.Sprintf("evt_%d", time.Now().UnixNano()),
+// 		EventType:   service.EventTypeReserveInventory,
+// 		OccurredAt:  time.Now(),
+// 		OrderID:     order.ID,
+// 		UserID:      order.UserID,
+// 		TotalAmount: order.TotalAmount,
+// 		Status:      order.Status.String(),
+// 		Items:       items,
+// 	}
 
-	// Produce event to Kafka
-	err := kp.produceEvent(ctx, kp.topics.inventoryEvents, order.ID, payload)
-	if err != nil {
-		kp.logger.Error("Failed to publish reserve inventory event", "error", err, "order_id", order.ID)
-		return err
-	}
+// 	// Produce event to Kafka
+// 	err := kp.produceEvent(ctx, kp.topics.inventoryEvents, order.ID, payload)
+// 	if err != nil {
+// 		kp.logger.Error("Failed to publish reserve inventory event", "error", err, "order_id", order.ID)
+// 		return err
+// 	}
 
-	kp.logger.Info("Published reserve inventory event", "order_id", order.ID)
-	return nil
-}
+// 	kp.logger.Info("Published reserve inventory event", "order_id", order.ID)
+// 	return nil
+// }
 
-// PublishReleaseInventory publishes a request to release reserved inventory
-func (kp *KafkaProducer) PublishReleaseInventory(ctx context.Context, order *entity.Order) error {
-	// Create order items data
-	items := make([]OrderItemData, len(order.Items))
-	for i, item := range order.Items {
-		items[i] = OrderItemData{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			Price:     item.Price,
-		}
-	}
+// // PublishReleaseInventory publishes a request to release reserved inventory
+// func (kp *KafkaProducer) PublishReleaseInventory(ctx context.Context, order *entity.Order) error {
+// 	// Create order items data
+// 	items := make([]OrderItemData, len(order.Items))
+// 	for i, item := range order.Items {
+// 		items[i] = OrderItemData{
+// 			ProductID: item.ProductID,
+// 			Quantity:  item.Quantity,
+// 			Price:     item.Price,
+// 		}
+// 	}
 
-	// Create event payload
-	payload := EventPayload{
-		EventID:     fmt.Sprintf("evt_%d", time.Now().UnixNano()),
-		EventType:   service.EventTypeReleaseInventory,
-		OccurredAt:  time.Now(),
-		OrderID:     order.ID,
-		UserID:      order.UserID,
-		TotalAmount: order.TotalAmount,
-		Status:      order.Status.String(),
-		Items:       items,
-	}
+// 	// Create event payload
+// 	payload := EventPayload{
+// 		EventID:     fmt.Sprintf("evt_%d", time.Now().UnixNano()),
+// 		EventType:   service.EventTypeReleaseInventory,
+// 		OccurredAt:  time.Now(),
+// 		OrderID:     order.ID,
+// 		UserID:      order.UserID,
+// 		TotalAmount: order.TotalAmount,
+// 		Status:      order.Status.String(),
+// 		Items:       items,
+// 	}
 
-	// Produce event to Kafka
-	err := kp.produceEvent(ctx, kp.topics.inventoryEvents, order.ID, payload)
-	if err != nil {
-		kp.logger.Error("Failed to publish release inventory event", "error", err, "order_id", order.ID)
-		return err
-	}
+// 	// Produce event to Kafka
+// 	err := kp.produceEvent(ctx, kp.topics.inventoryEvents, order.ID, payload)
+// 	if err != nil {
+// 		kp.logger.Error("Failed to publish release inventory event", "error", err, "order_id", order.ID)
+// 		return err
+// 	}
 
-	kp.logger.Info("Published release inventory event", "order_id", order.ID)
-	return nil
-}
+// 	kp.logger.Info("Published release inventory event", "order_id", order.ID)
+// 	return nil
+// }
 
 // PublishPaymentRequest publishes a request to process payment for an order
 func (kp *KafkaProducer) PublishPaymentRequest(ctx context.Context, order *entity.Order) error {

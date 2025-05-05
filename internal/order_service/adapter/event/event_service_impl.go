@@ -58,15 +58,15 @@ func (kes *KafkaEventPublisherService) PublishOrderCompleted(ctx context.Context
 	return kes.producer.PublishOrderCompleted(ctx, order)
 }
 
-// PublishReserveInventory publishes a request to reserve inventory for an order.
-func (kes *KafkaEventPublisherService) PublishReserveInventory(ctx context.Context, order *entity.Order) error {
-	return kes.producer.PublishReserveInventory(ctx, order)
-}
+// // PublishReserveInventory publishes a request to reserve inventory for an order.
+// func (kes *KafkaEventPublisherService) PublishReserveInventory(ctx context.Context, order *entity.Order) error {
+// 	return kes.producer.PublishReserveInventory(ctx, order)
+// }
 
-// PublishReleaseInventory publishes a request to release reserved inventory.
-func (kes *KafkaEventPublisherService) PublishReleaseInventory(ctx context.Context, order *entity.Order) error {
-	return kes.producer.PublishReleaseInventory(ctx, order)
-}
+// // PublishReleaseInventory publishes a request to release reserved inventory.
+// func (kes *KafkaEventPublisherService) PublishReleaseInventory(ctx context.Context, order *entity.Order) error {
+// 	return kes.producer.PublishReleaseInventory(ctx, order)
+// }
 
 // PublishPaymentRequest publishes a request to process payment for an order.
 func (kes *KafkaEventPublisherService) PublishPaymentRequest(ctx context.Context, order *entity.Order) error {

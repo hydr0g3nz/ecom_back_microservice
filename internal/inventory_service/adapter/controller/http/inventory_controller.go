@@ -72,6 +72,9 @@ func (h *InventoryHandler) handleInventoryError(c *fiber.Ctx, err error) error {
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		statusCode = http.StatusNotFound
 		message = "Record not found"
+	case errors.Is(err, entity.ErrSKUAlreadyExists):
+		statusCode = http.StatusConflict
+		message = "SKU already exists"
 	// Add other specific domain errors here
 	default:
 		// Fallback for unexpected errors

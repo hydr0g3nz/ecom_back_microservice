@@ -107,12 +107,12 @@ func (ou *orderUsecase) CreateOrder(ctx context.Context, order *entity.Order) (*
 			// In a real system, you might want to implement retry logic or compensating actions
 		}
 
-		// Request inventory reservation
-		if err := ou.eventPub.PublishReserveInventory(ctx, createdOrder); err != nil {
-			fmt.Println("Error publishing reserve inventory event:", err)
-			// Log error but continue
-			// In a real system, you might want to implement retry logic
-		}
+		// // Request inventory reservation
+		// if err := ou.eventPub.PublishReserveInventory(ctx, createdOrder); err != nil {
+		// 	fmt.Println("Error publishing reserve inventory event:", err)
+		// 	// Log error but continue
+		// 	// In a real system, you might want to implement retry logic
+		// }
 	}()
 
 	return createdOrder, nil
@@ -208,10 +208,10 @@ func (ou *orderUsecase) UpdateOrderStatus(ctx context.Context, id string, status
 			// Log error but continue
 			fmt.Println("Error publishing order cancelled event:", err)
 		}
-		if err := ou.eventPub.PublishReleaseInventory(ctx, updatedOrder); err != nil {
-			// Log error but continue
-			fmt.Println("Error publishing release inventory event:", err)
-		}
+		// if err := ou.eventPub.PublishReleaseInventory(ctx, updatedOrder); err != nil {
+		// 	// Log error but continue
+		// 	fmt.Println("Error publishing release inventory event:", err)
+		// }
 	case valueobject.OrderStatusCompleted:
 		if err := ou.eventPub.PublishOrderCompleted(ctx, updatedOrder); err != nil {
 			// Log error but continue
@@ -290,11 +290,11 @@ func (ou *orderUsecase) ProcessPaymentCompleted(ctx context.Context, orderID str
 			return nil, ou.errBuilder.Err(err)
 		}
 
-		// Release reserved inventory
-		if err := ou.eventPub.PublishReleaseInventory(ctx, updatedOrder); err != nil {
-			fmt.Println("Error publishing release inventory event:", err)
-			// Log error but continue
-		}
+		// // Release reserved inventory
+		// if err := ou.eventPub.PublishReleaseInventory(ctx, updatedOrder); err != nil {
+		// 	fmt.Println("Error publishing release inventory event:", err)
+		// 	// Log error but continue
+		// }
 
 		return updatedOrder, nil
 	}

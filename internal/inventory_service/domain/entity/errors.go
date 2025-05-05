@@ -7,6 +7,7 @@ var (
 	ErrInventoryNotFound  = errors.New("inventory item not found")
 	ErrInsufficientStock  = errors.New("insufficient stock for reservation")
 	ErrInvalidProductData = errors.New("invalid product data")
+	ErrSKUAlreadyExists   = errors.New("SKU already exists")
 	// Add other domain-specific errors here
 )
 

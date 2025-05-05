@@ -16,10 +16,10 @@ import (
 // ReservationProcessorUsecase defines the interface for processing reservation-related operations
 type ReservationProcessorUsecase interface {
 	// ProcessReservationRequest processes a reservation request from an order
-	ProcessReservationRequest(ctx context.Context, orderData []byte) error
+	ProcessReservation(ctx context.Context, orderData []byte) error
 
 	// ProcessReleaseRequest processes a request to release reserved inventory
-	ProcessReleaseRequest(ctx context.Context, orderData []byte) error
+	ProcessRelease(ctx context.Context, orderData []byte) error
 
 	// ProcessReservationExpiry checks and processes expired reservations
 	ProcessReservationExpiry(ctx context.Context) error
@@ -54,7 +54,7 @@ func NewReservationProcessorUsecase(
 }
 
 // ProcessReservationRequest processes a reservation request from an order
-func (rpu *reservationProcessorUsecase) ProcessReservationRequest(ctx context.Context, orderData []byte) error {
+func (rpu *reservationProcessorUsecase) ProcessReservation(ctx context.Context, orderData []byte) error {
 	// Parse order data
 	var payload OrderReservationPayload
 	if err := json.Unmarshal(orderData, &payload); err != nil {
@@ -110,11 +110,11 @@ func (rpu *reservationProcessorUsecase) ProcessReservationRequest(ctx context.Co
 }
 
 // ProcessReleaseRequest processes a request to release reserved inventory
-func (rpu *reservationProcessorUsecase) ProcessReleaseRequest(ctx context.Context, orderData []byte) error {
+func (rpu *reservationProcessorUsecase) ProcessRelease(ctx context.Context, orderData []byte) error {
 	// Parse order data
 	var payload struct {
 		OrderID string `json:"order_id"`
-		Action  string `json:"action"` // "complete" or "cancel"
+		// Action  string `json:"action"` // "complete" or "cancel"
 	}
 	if err := json.Unmarshal(orderData, &payload); err != nil {
 		return rpu.errBuilder.Err(fmt.Errorf("failed to unmarshal release data: %w", err))
@@ -135,20 +135,9 @@ func (rpu *reservationProcessorUsecase) ProcessReleaseRequest(ctx context.Contex
 		return rpu.errBuilder.Err(fmt.Errorf("no reservations found for order %s", payload.OrderID))
 	}
 
-	// Process based on action
-	switch payload.Action {
-	case "complete":
-		// Complete the reservation
-		if err := rpu.inventoryUC.CompleteReservation(ctx, payload.OrderID); err != nil {
-			return rpu.errBuilder.Err(fmt.Errorf("failed to complete reservation: %w", err))
-		}
-	case "cancel":
-		// Cancel the reservation
-		if err := rpu.inventoryUC.CancelReservation(ctx, payload.OrderID); err != nil {
-			return rpu.errBuilder.Err(fmt.Errorf("failed to cancel reservation: %w", err))
-		}
-	default:
-		return rpu.errBuilder.Err(fmt.Errorf("invalid action: %s, must be 'complete' or 'cancel'", payload.Action))
+	// Release reserved inventory
+	if err := rpu.inventoryUC.CancelReservation(ctx, payload.OrderID); err != nil {
+		return rpu.errBuilder.Err(fmt.Errorf("failed to release reserved stock: %w", err))
 	}
 
 	return nil

@@ -78,7 +78,10 @@ func (iu *inventoryUsecase) GetInventoryItem(ctx context.Context, sku string) (*
 func (iu *inventoryUsecase) CreateInventoryItem(ctx context.Context, item *entity.InventoryItem) (*entity.InventoryItem, error) {
 	// Set current time
 	item.UpdatedAt = time.Now()
-
+	// check if SKU is already in use
+	if _, err := iu.repo.GetInventoryItem(ctx, item.SKU); err == nil {
+		return nil, iu.errBuilder.Err(entity.ErrSKUAlreadyExists)
+	}
 	// Create inventory item
 	newItem, err := iu.repo.CreateInventoryItem(ctx, item)
 	if err != nil {

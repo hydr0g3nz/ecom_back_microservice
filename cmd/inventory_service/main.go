@@ -23,6 +23,7 @@ import (
 
 	httpctl "github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/adapter/controller/http"
 	eventSvc "github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/adapter/event"
+	messaging "github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/adapter/event"
 	gormrepo "github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/adapter/repository/gorm"
 	"github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/adapter/repository/gorm/model"
 	appconfig "github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/config"
@@ -96,8 +97,13 @@ func main() {
 
 	// Initialize repositories
 	repositories := initRepositories(db)
-
-	eventServicePublisher, err := eventSvc.NewKafkaEventPublisher(&config.Messaging)
+	eventConfig := &messaging.KafkaConfig{
+		Brokers:         config.Messaging.Brokers,
+		InventoryTopic:  config.Messaging.InventoryTopic,
+		OrderTopic:      config.Messaging.OrderTopic,
+		ConsumerGroupID: config.Messaging.ConsumerGroupID,
+	}
+	eventServicePublisher, err := eventSvc.NewKafkaEventPublisher(eventConfig)
 	if err != nil {
 		log.Fatal("Failed to initialize Kafka event publisher", "error", err)
 	}
@@ -106,7 +112,7 @@ func main() {
 	usecases := initUsecases(repositories, eventServicePublisher)
 
 	// Initialize Kafka consumer (needs usecase)
-	kafkaConsumer, err := eventSvc.NewKafkaEventSubscriber(&config.Messaging, usecases.ReservationUsecase)
+	kafkaConsumer, err := eventSvc.NewKafkaEventSubscriber(eventConfig, usecases.ReservationUsecase)
 	if err != nil {
 		log.Fatal("Failed to initialize Kafka consumer", "error", err)
 	}
@@ -270,7 +276,7 @@ func handleGracefulShutdown(ctx context.Context, cancel context.CancelFunc, serv
 	}
 
 	// Shutdown gRPC server
-	servers.GRPC.GracefulStop()
+	// servers.GRPC.GracefulStop()
 
 	cancel()
 	log.Info("Shutdown complete")

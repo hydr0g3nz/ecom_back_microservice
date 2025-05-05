@@ -13,10 +13,10 @@ import (
 
 // KafkaConfig holds the configuration for Kafka connection
 type KafkaConfig struct {
-	Brokers         []string
-	InventoryTopic  string
-	OrderTopic      string
-	ConsumerGroupID string
+	Brokers         []string `yaml:"brokers"`
+	InventoryTopic  string   `yaml:"inventory_topic"`
+	OrderTopic      string   `yaml:"order_topic"`
+	ConsumerGroupID string   `yaml:"consumer_group_id"`
 }
 
 // KafkaEventPublisher implements the EventPublisherService interface using Kafka
@@ -74,7 +74,6 @@ func NewKafkaEventSubscriber(
 		MaxBytes:    10e6,             // 10MB
 		StartOffset: kafka.LastOffset, // Start from the newest message
 	})
-
 	// Reader for inventory reservation/release events (if needed as a separate topic)
 	reservationReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     config.Brokers,
@@ -82,7 +81,7 @@ func NewKafkaEventSubscriber(
 		GroupID:     config.ConsumerGroupID + "-reservations",
 		MinBytes:    10e3,
 		MaxBytes:    10e6,
-		StartOffset: kafka.LastOffset,
+		StartOffset: kafka.FirstOffset,
 	})
 
 	return &KafkaEventSubscriber{
@@ -96,6 +95,7 @@ func NewKafkaEventSubscriber(
 
 // SubscribeToOrderEvents subscribes to order-related events
 func (k *KafkaEventSubscriber) SubscribeToOrderEvents(ctx context.Context) error {
+	log.Println("Subscribing to order events...")
 	go func() {
 		for {
 			select {
@@ -103,8 +103,9 @@ func (k *KafkaEventSubscriber) SubscribeToOrderEvents(ctx context.Context) error
 				log.Println("Context canceled, stopping order event subscription")
 				return
 			default:
+				log.Println("Reading messages from order topic...")
 				// Read messages from order topic
-				msg, err := k.orderReader.ReadMessage(ctx)
+				msg, err := k.orderReader.FetchMessage(ctx)
 				if err != nil {
 					log.Printf("Error reading message from order topic: %v", err)
 					continue
@@ -113,6 +114,11 @@ func (k *KafkaEventSubscriber) SubscribeToOrderEvents(ctx context.Context) error
 				// Process the message
 				if err := k.processOrderMessage(ctx, msg.Value); err != nil {
 					log.Printf("Error processing order message: %v", err)
+				}
+
+				// Commit the message
+				if err := k.orderReader.CommitMessages(ctx, msg); err != nil {
+					log.Printf("Error committing order message: %v", err)
 				}
 			}
 		}
@@ -127,7 +133,7 @@ func (k *KafkaEventSubscriber) processOrderMessage(ctx context.Context, msg []by
 	if err := json.Unmarshal(msg, &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal message: %w", err)
 	}
-
+	log.Printf("Received message: %s", string(msg))
 	// Extract event type
 	eventType, ok := payload["event_type"].(string)
 	if !ok {
@@ -140,10 +146,6 @@ func (k *KafkaEventSubscriber) processOrderMessage(ctx context.Context, msg []by
 		return k.HandleOrderCreated(ctx, msg)
 	case "order.cancelled":
 		return k.HandleOrderCancelled(ctx, msg)
-	case "order.reservation.request":
-		return k.HandleReservationRequest(ctx, msg)
-	case "order.release.request":
-		return k.HandleReleaseRequest(ctx, msg)
 	default:
 		log.Printf("Ignoring unknown event type: %s", eventType)
 		return nil
@@ -152,22 +154,12 @@ func (k *KafkaEventSubscriber) processOrderMessage(ctx context.Context, msg []by
 
 // HandleOrderCreated handles the event when an order is created
 func (k *KafkaEventSubscriber) HandleOrderCreated(ctx context.Context, orderData []byte) error {
-	return k.inventoryUsecase.ProcessReservationRequest(ctx, orderData)
+	return k.inventoryUsecase.ProcessReservation(ctx, orderData)
 }
 
 // HandleOrderCancelled handles the event when an order is cancelled
 func (k *KafkaEventSubscriber) HandleOrderCancelled(ctx context.Context, orderData []byte) error {
-	return k.inventoryUsecase.ProcessReleaseRequest(ctx, orderData)
-}
-
-// HandleReservationRequest handles reservation requests
-func (k *KafkaEventSubscriber) HandleReservationRequest(ctx context.Context, reservationData []byte) error {
-	return k.inventoryUsecase.ProcessReservationRequest(ctx, reservationData)
-}
-
-// HandleReleaseRequest handles release requests
-func (k *KafkaEventSubscriber) HandleReleaseRequest(ctx context.Context, releaseData []byte) error {
-	return k.inventoryUsecase.ProcessReleaseRequest(ctx, releaseData)
+	return k.inventoryUsecase.ProcessRelease(ctx, orderData)
 }
 
 // Close closes the Kafka reader connections

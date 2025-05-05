@@ -13,10 +13,8 @@ const (
 	EventTypeOrderUpdated      = "order.updated"
 	EventTypeOrderCancelled    = "order.cancelled"
 	EventTypeOrderCompleted    = "order.completed"
-	EventTypeReserveInventory  = "inventory.reserve"
-	EventTypeReleaseInventory  = "inventory.release"
-	EventTypeInventoryReserved = "inventory.reserved"
-	EventTypeInventoryReleased = "inventory.released"
+	EventTypeInventoryReserved = "inventory.stock.reserved"
+	EventTypeInventoryReleased = "inventory.stock.released"
 	EventTypePaymentRequested  = "payment.requested"
 	EventTypePaymentProcessed  = "payment.processed"
 	EventTypePaymentFailed     = "payment.failed"
@@ -35,13 +33,6 @@ type EventPublisherService interface {
 
 	// PublishOrderCompleted publishes an event that an order has been completed
 	PublishOrderCompleted(ctx context.Context, order *entity.Order) error
-
-	// PublishReserveInventory publishes a request to reserve inventory for an order
-	PublishReserveInventory(ctx context.Context, order *entity.Order) error
-
-	// PublishReleaseInventory publishes a request to release reserved inventory
-	PublishReleaseInventory(ctx context.Context, order *entity.Order) error
-
 	// PublishPaymentRequest publishes a request to process payment for an order
 	PublishPaymentRequest(ctx context.Context, order *entity.Order) error
 	Close() error

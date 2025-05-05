@@ -5,16 +5,21 @@ import (
 	"os"
 	"time"
 
-	messaging "github.com/hydr0g3nz/ecom_back_microservice/internal/inventory_service/adapter/event"
 	"gopkg.in/yaml.v3"
 )
 
 // Config holds all application configuration
 type Config struct {
-	Server    ServerConfig          `yaml:"server"`
-	Database  DatabaseConfig        `yaml:"database"`
-	GRPC      GRPCConfig            `yaml:"grpc"`
-	Messaging messaging.KafkaConfig `yaml:"messaging"`
+	Server    ServerConfig   `yaml:"server"`
+	Database  DatabaseConfig `yaml:"database"`
+	GRPC      GRPCConfig     `yaml:"grpc"`
+	Messaging KafkaConfig    `yaml:"kafka"`
+}
+type KafkaConfig struct {
+	Brokers         []string `yaml:"brokers"`
+	InventoryTopic  string   `yaml:"inventory_topic"`
+	OrderTopic      string   `yaml:"order_topic"`
+	ConsumerGroupID string   `yaml:"consumer_group_id"`
 }
 
 // ServerConfig contains HTTP server configuration
@@ -65,7 +70,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		// GRPC: GRPCConfig{
 		// 	Port: "50052", // Different port from user service
 		// },
-		Messaging: messaging.KafkaConfig{
+		Messaging: KafkaConfig{
 			Brokers:         []string{"localhost:9092"},
 			InventoryTopic:  "inventory_events",
 			OrderTopic:      "order_events",
@@ -80,14 +85,16 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	// Parse YAML
-	err = yaml.Unmarshal(file, config)
+	err = yaml.Unmarshal(file, &config)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing config file: %w", err)
 	}
 
 	// Override with environment variables if they exist
-	config = overrideWithEnv(config)
-
+	// config = overrideWithEnv(config)
+	fmt.Println("Config loaded from file:", configPath)
+	fmt.Println("Config loaded:", config)
+	fmt.Println(string(file))
 	return config, nil
 }
 
