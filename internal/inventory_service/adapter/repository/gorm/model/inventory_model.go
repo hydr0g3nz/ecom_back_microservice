@@ -8,7 +8,7 @@ import (
 
 // InventoryItem is the GORM model for inventory items
 type InventoryItem struct {
-	SKU          string    `gorm:"primaryKey"`
+	ProductID    string    `gorm:"primaryKey"`
 	AvailableQty int       `gorm:"not null"`
 	ReservedQty  int       `gorm:"not null"`
 	SoldQty      int       `gorm:"not null"`
@@ -19,7 +19,7 @@ type InventoryItem struct {
 // ToEntity converts a GORM model to a domain entity
 func (m *InventoryItem) ToEntity() *entity.InventoryItem {
 	return &entity.InventoryItem{
-		SKU:          m.SKU,
+		ProductID:    m.ProductID,
 		AvailableQty: m.AvailableQty,
 		ReservedQty:  m.ReservedQty,
 		SoldQty:      m.SoldQty,
@@ -31,7 +31,7 @@ func (m *InventoryItem) ToEntity() *entity.InventoryItem {
 // NewInventoryItemModel creates a new GORM model from a domain entity
 func NewInventoryItemModel(item *entity.InventoryItem) *InventoryItem {
 	return &InventoryItem{
-		SKU:          item.SKU,
+		ProductID:    item.ProductID,
 		AvailableQty: item.AvailableQty,
 		ReservedQty:  item.ReservedQty,
 		SoldQty:      item.SoldQty,
@@ -44,7 +44,7 @@ func NewInventoryItemModel(item *entity.InventoryItem) *InventoryItem {
 type InventoryReservation struct {
 	ReservationID string    `gorm:"primaryKey"`
 	OrderID       string    `gorm:"index;not null"`
-	SKU           string    `gorm:"index;not null"`
+	ProductID     string    `gorm:"index;not null"` // SKU is the product_id for inventory           string    `gorm:"index;not null"`
 	Qty           int       `gorm:"not null"`
 	Status        string    `gorm:"not null"`
 	ReservedAt    time.Time `gorm:"not null"`
@@ -56,7 +56,7 @@ func (m *InventoryReservation) ToEntity() *entity.InventoryReservation {
 	return &entity.InventoryReservation{
 		ReservationID: m.ReservationID,
 		OrderID:       m.OrderID,
-		SKU:           m.SKU,
+		ProductID:     m.ProductID,
 		Qty:           m.Qty,
 		Status:        m.Status,
 		ReservedAt:    m.ReservedAt,
@@ -69,7 +69,7 @@ func NewInventoryReservationModel(reservation *entity.InventoryReservation) *Inv
 	return &InventoryReservation{
 		ReservationID: reservation.ReservationID,
 		OrderID:       reservation.OrderID,
-		SKU:           reservation.SKU,
+		ProductID:     reservation.ProductID,
 		Qty:           reservation.Qty,
 		Status:        reservation.Status,
 		ReservedAt:    reservation.ReservedAt,
@@ -80,7 +80,7 @@ func NewInventoryReservationModel(reservation *entity.InventoryReservation) *Inv
 // StockTransaction is the GORM model for stock transactions
 type StockTransaction struct {
 	TransactionID string    `gorm:"primaryKey"`
-	SKU           string    `gorm:"index;not null"`
+	ProductID     string    `gorm:"index;not null"`
 	Type          string    `gorm:"not null"`
 	Qty           int       `gorm:"not null"`
 	OccurredAt    time.Time `gorm:"not null;index"`
@@ -91,7 +91,7 @@ type StockTransaction struct {
 func (m *StockTransaction) ToEntity() *entity.StockTransaction {
 	return &entity.StockTransaction{
 		TransactionID: m.TransactionID,
-		SKU:           m.SKU,
+		ProductID:     m.ProductID,
 		Type:          m.Type,
 		Qty:           m.Qty,
 		OccurredAt:    m.OccurredAt,
@@ -103,7 +103,7 @@ func (m *StockTransaction) ToEntity() *entity.StockTransaction {
 func NewStockTransactionModel(transaction *entity.StockTransaction) *StockTransaction {
 	return &StockTransaction{
 		TransactionID: transaction.TransactionID,
-		SKU:           transaction.SKU,
+		ProductID:     transaction.ProductID,
 		Type:          transaction.Type,
 		Qty:           transaction.Qty,
 		OccurredAt:    transaction.OccurredAt,

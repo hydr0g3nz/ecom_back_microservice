@@ -92,7 +92,7 @@ func main() {
 	// Initialize MongoDB database
 	db, err := initDatabase(config.Database, log)
 	if err != nil {
-		log.Fatal("Failed to initialize MongoDB", "error", err)
+		log.Fatal("Failed to initialize database", "error", err)
 	}
 
 	// Initialize repositories

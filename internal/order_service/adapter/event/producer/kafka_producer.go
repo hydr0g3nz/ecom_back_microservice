@@ -71,12 +71,13 @@ func (kp *KafkaProducer) getWriter(topic string) *kafka.Writer {
 	}
 
 	writer := &kafka.Writer{
-		Addr:                   kafka.TCP(kp.brokers...),
-		Topic:                  topic,
-		Balancer:               &kafka.LeastBytes{},
+		Addr:  kafka.TCP(kp.brokers...),
+		Topic: topic,
+		// Balancer:               &kafka.LeastBytes{},
 		AllowAutoTopicCreation: true,
 		RequiredAcks:           kafka.RequireAll, // Equivalent to "acks=all"
 		MaxAttempts:            3,                // Equivalent to "retries=3"
+		BatchTimeout:           50 * time.Millisecond,
 	}
 
 	kp.writers[topic] = writer

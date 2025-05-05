@@ -34,9 +34,26 @@ type reservationProcessorUsecase struct {
 }
 
 // OrderReservationPayload represents the expected structure of order data for reservations
+//
+//	type OrderReservationPayload struct {
+//		OrderID string         `json:"order_id"`
+//		Items   map[string]int `json:"items"`
+//	}
 type OrderReservationPayload struct {
-	OrderID string         `json:"order_id"`
-	Items   map[string]int `json:"items"`
+	EventID     string          `json:"event_id"`
+	EventType   string          `json:"event_type"`
+	OccurredAt  time.Time       `json:"occurred_at"`
+	OrderID     string          `json:"order_id"`
+	UserID      string          `json:"user_id"`
+	TotalAmount float64         `json:"total_amount"`
+	Status      string          `json:"status"`
+	Items       []OrderItemData `json:"items,omitempty"`
+	Data        interface{}     `json:"data,omitempty"`
+}
+type OrderItemData struct {
+	ProductID string  `json:"product_id"`
+	Quantity  int     `json:"quantity"`
+	Price     float64 `json:"price"`
 }
 
 // NewReservationProcessorUsecase creates a new instance of ReservationProcessorUsecase
@@ -89,9 +106,12 @@ func (rpu *reservationProcessorUsecase) ProcessReservation(ctx context.Context, 
 			return rpu.errBuilder.Err(fmt.Errorf("failed to cancel existing reservations: %w", err))
 		}
 	}
-
+	mapQuantity := make(map[string]int)
+	for _, item := range payload.Items {
+		mapQuantity[item.ProductID] = item.Quantity
+	}
 	// Create new reservations
-	reservations, err := rpu.inventoryUC.ReserveStock(ctx, payload.OrderID, payload.Items)
+	reservations, err := rpu.inventoryUC.ReserveStock(ctx, payload.OrderID, mapQuantity)
 	if err != nil {
 		// Publish reservation failed event
 		rpu.eventPub.PublishStockReservationFailed(ctx, payload.OrderID, "", err.Error())

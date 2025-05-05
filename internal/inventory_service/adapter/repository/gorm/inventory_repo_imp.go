@@ -20,9 +20,9 @@ func NewGormInventoryRepository(db *gorm.DB) *GormInventoryRepository {
 }
 
 // GetInventoryItem retrieves an inventory item by SKU
-func (r *GormInventoryRepository) GetInventoryItem(ctx context.Context, sku string) (*entity.InventoryItem, error) {
+func (r *GormInventoryRepository) GetInventoryItem(ctx context.Context, product_id string) (*entity.InventoryItem, error) {
 	var item model.InventoryItem
-	err := r.db.WithContext(ctx).Where("sku = ?", sku).First(&item).Error
+	err := r.db.WithContext(ctx).Where("product_id = ?", product_id).First(&item).Error
 	if err != nil {
 		return nil, err
 	}
@@ -111,18 +111,18 @@ func (r *GormInventoryRepository) RecordStockTransaction(ctx context.Context, tr
 }
 
 // GetStockTransactions retrieves stock transactions for a SKU
-func (r *GormInventoryRepository) GetStockTransactions(ctx context.Context, sku string, limit, offset int) ([]*entity.StockTransaction, int, error) {
+func (r *GormInventoryRepository) GetStockTransactions(ctx context.Context, product_id string, limit, offset int) ([]*entity.StockTransaction, int, error) {
 	var transactions []model.StockTransaction
 	var total int64
 
 	// Get total count
-	err := r.db.WithContext(ctx).Model(&model.StockTransaction{}).Where("sku = ?", sku).Count(&total).Error
+	err := r.db.WithContext(ctx).Model(&model.StockTransaction{}).Where("product_id = ?", product_id).Count(&total).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Get paginated results
-	err = r.db.WithContext(ctx).Where("sku = ?", sku).
+	err = r.db.WithContext(ctx).Where("product_id = ?", product_id).
 		Order("occurred_at DESC").
 		Limit(limit).
 		Offset(offset).

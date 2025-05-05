@@ -4,9 +4,9 @@ import (
 	"time"
 )
 
-// InventoryItem tracks the main stock information of each SKU
+// InventoryItem tracks the main stock information of each ProductID
 type InventoryItem struct {
-	SKU          string    `json:"sku"`
+	ProductID    string    `json:"product_id"`
 	AvailableQty int       `json:"available_qty"`
 	ReservedQty  int       `json:"reserved_qty"`
 	SoldQty      int       `json:"sold_qty"`
@@ -18,7 +18,7 @@ type InventoryItem struct {
 type InventoryReservation struct {
 	ReservationID string    `json:"reservation_id"`
 	OrderID       string    `json:"order_id"`
-	SKU           string    `json:"sku"`
+	ProductID     string    `json:"product_id"`
 	Qty           int       `json:"qty"`
 	Status        string    `json:"status"`
 	ReservedAt    time.Time `json:"reserved_at"`
@@ -28,7 +28,7 @@ type InventoryReservation struct {
 // StockTransaction tracks the stock transactions
 type StockTransaction struct {
 	TransactionID string    `json:"transaction_id"`
-	SKU           string    `json:"sku"`
+	ProductID     string    `json:"product_id"`
 	Type          string    `json:"type"`
 	Qty           int       `json:"qty"`
 	OccurredAt    time.Time `json:"occurred_at"`

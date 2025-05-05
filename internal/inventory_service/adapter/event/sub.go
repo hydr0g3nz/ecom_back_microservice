@@ -67,35 +67,34 @@ func NewKafkaEventSubscriber(
 
 	// Reader for order events
 	orderReader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     config.Brokers,
-		Topic:       config.OrderTopic,
-		GroupID:     config.ConsumerGroupID + "-orders",
-		MinBytes:    10e3,             // 10KB
+		Brokers: config.Brokers,
+		Topic:   config.OrderTopic,
+		GroupID: config.ConsumerGroupID + "-orders",
+		// MinBytes:    10e3,             // 10KB
 		MaxBytes:    10e6,             // 10MB
 		StartOffset: kafka.LastOffset, // Start from the newest message
 	})
 	// Reader for inventory reservation/release events (if needed as a separate topic)
-	reservationReader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     config.Brokers,
-		Topic:       "inventory_reservations", // Adjust as needed
-		GroupID:     config.ConsumerGroupID + "-reservations",
-		MinBytes:    10e3,
-		MaxBytes:    10e6,
-		StartOffset: kafka.FirstOffset,
-	})
+	// reservationReader := kafka.NewReader(kafka.ReaderConfig{
+	// 	Brokers:     config.Brokers,
+	// 	Topic:       "inventory_reservations", // Adjust as needed
+	// 	GroupID:     config.ConsumerGroupID + "-reservations",
+	// 	MinBytes:    10e3,
+	// 	MaxBytes:    10e6,
+	// 	StartOffset: kafka.FirstOffset,
+	// })
 
 	return &KafkaEventSubscriber{
-		orderReader:       orderReader,
-		reservationReader: reservationReader,
-		inventoryUsecase:  inventoryUsecase,
-		kafkaConfig:       config,
-		serviceState:      "ready",
+		orderReader: orderReader,
+		// reservationReader: reservationReader,
+		inventoryUsecase: inventoryUsecase,
+		kafkaConfig:      config,
+		serviceState:     "ready",
 	}, nil
 }
 
 // SubscribeToOrderEvents subscribes to order-related events
 func (k *KafkaEventSubscriber) SubscribeToOrderEvents(ctx context.Context) error {
-	log.Println("Subscribing to order events...")
 	go func() {
 		for {
 			select {
@@ -103,7 +102,6 @@ func (k *KafkaEventSubscriber) SubscribeToOrderEvents(ctx context.Context) error
 				log.Println("Context canceled, stopping order event subscription")
 				return
 			default:
-				log.Println("Reading messages from order topic...")
 				// Read messages from order topic
 				msg, err := k.orderReader.FetchMessage(ctx)
 				if err != nil {
@@ -133,7 +131,6 @@ func (k *KafkaEventSubscriber) processOrderMessage(ctx context.Context, msg []by
 	if err := json.Unmarshal(msg, &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal message: %w", err)
 	}
-	log.Printf("Received message: %s", string(msg))
 	// Extract event type
 	eventType, ok := payload["event_type"].(string)
 	if !ok {

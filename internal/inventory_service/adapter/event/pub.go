@@ -52,7 +52,7 @@ type StockEventPayload struct {
 	Data          map[string]interface{} `json:"data,omitempty"`
 }
 
-// serializeAndPublish serializes an event payload and publishes it to Kafka
+// serializeAndPublish serializes an event payload true publishes it to Kafka
 func (k *KafkaEventPublisher) serializeAndPublish(ctx context.Context, payload StockEventPayload, orderRelated bool) error {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -84,7 +84,7 @@ func (k *KafkaEventPublisher) PublishStockUpdated(ctx context.Context, item *ent
 	payload := StockEventPayload{
 		EventType:    service.EventTypeStockUpdated,
 		Timestamp:    time.Now(),
-		SKU:          item.SKU,
+		SKU:          item.ProductID,
 		AvailableQty: item.AvailableQty,
 		ReorderLevel: item.ReorderLevel,
 		Data: map[string]interface{}{
@@ -100,7 +100,7 @@ func (k *KafkaEventPublisher) PublishStockReserved(ctx context.Context, reservat
 	payload := StockEventPayload{
 		EventType:     service.EventTypeStockReserved,
 		Timestamp:     time.Now(),
-		SKU:           reservation.SKU,
+		SKU:           reservation.ProductID,
 		OrderID:       reservation.OrderID,
 		Quantity:      reservation.Qty,
 		ReservationID: reservation.ReservationID,
@@ -109,25 +109,7 @@ func (k *KafkaEventPublisher) PublishStockReserved(ctx context.Context, reservat
 		},
 	}
 
-	// Publish to both inventory topic and order topic
-	if err := k.serializeAndPublish(ctx, payload, false); err != nil {
-		return err
-	}
-
-	// Also publish to order topic
-	orderPayload := StockEventPayload{
-		EventType:     service.EventTypeOrderReservationCreated,
-		Timestamp:     time.Now(),
-		SKU:           reservation.SKU,
-		OrderID:       reservation.OrderID,
-		Quantity:      reservation.Qty,
-		ReservationID: reservation.ReservationID,
-		Data: map[string]interface{}{
-			"reservation": reservation,
-		},
-	}
-
-	return k.serializeAndPublish(ctx, orderPayload, true)
+	return k.serializeAndPublish(ctx, payload, false)
 }
 
 // PublishStockReservationFailed publishes an event that stock reservation has failed
@@ -141,7 +123,7 @@ func (k *KafkaEventPublisher) PublishStockReservationFailed(ctx context.Context,
 	}
 
 	// Publish to order topic as this is relevant to order processing
-	return k.serializeAndPublish(ctx, payload, true)
+	return k.serializeAndPublish(ctx, payload, false)
 }
 
 // PublishStockReleased publishes an event that reserved stock has been released
@@ -149,7 +131,7 @@ func (k *KafkaEventPublisher) PublishStockReleased(ctx context.Context, reservat
 	payload := StockEventPayload{
 		EventType:     service.EventTypeStockReleased,
 		Timestamp:     time.Now(),
-		SKU:           reservation.SKU,
+		SKU:           reservation.ProductID,
 		OrderID:       reservation.OrderID,
 		Quantity:      reservation.Qty,
 		ReservationID: reservation.ReservationID,
@@ -167,7 +149,7 @@ func (k *KafkaEventPublisher) PublishStockReleased(ctx context.Context, reservat
 	orderPayload := StockEventPayload{
 		EventType:     service.EventTypeOrderReservationCanceled,
 		Timestamp:     time.Now(),
-		SKU:           reservation.SKU,
+		SKU:           reservation.ProductID,
 		OrderID:       reservation.OrderID,
 		Quantity:      reservation.Qty,
 		ReservationID: reservation.ReservationID,
@@ -176,7 +158,7 @@ func (k *KafkaEventPublisher) PublishStockReleased(ctx context.Context, reservat
 		},
 	}
 
-	return k.serializeAndPublish(ctx, orderPayload, true)
+	return k.serializeAndPublish(ctx, orderPayload, false)
 }
 
 // PublishStockDeducted publishes an event that stock has been deducted
@@ -184,7 +166,7 @@ func (k *KafkaEventPublisher) PublishStockDeducted(ctx context.Context, transact
 	payload := StockEventPayload{
 		EventType: service.EventTypeStockDeducted,
 		Timestamp: time.Now(),
-		SKU:       transaction.SKU,
+		SKU:       transaction.ProductID,
 		Quantity:  transaction.Qty,
 		Data: map[string]interface{}{
 			"transaction": transaction,
@@ -204,7 +186,7 @@ func (k *KafkaEventPublisher) PublishStockLow(ctx context.Context, item *entity.
 	payload := StockEventPayload{
 		EventType:    service.EventTypeStockLow,
 		Timestamp:    time.Now(),
-		SKU:          item.SKU,
+		SKU:          item.ProductID,
 		AvailableQty: item.AvailableQty,
 		ReorderLevel: item.ReorderLevel,
 		Data: map[string]interface{}{

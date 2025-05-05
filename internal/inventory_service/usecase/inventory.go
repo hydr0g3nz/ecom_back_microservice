@@ -16,7 +16,7 @@ import (
 // InventoryUsecase defines the interface for inventory operations
 type InventoryUsecase interface {
 	// GetInventoryItem retrieves inventory information for a product SKU
-	GetInventoryItem(ctx context.Context, sku string) (*entity.InventoryItem, error)
+	GetInventoryItem(ctx context.Context, productID string) (*entity.InventoryItem, error)
 
 	// CreateInventoryItem creates a new inventory item
 	CreateInventoryItem(ctx context.Context, item *entity.InventoryItem) (*entity.InventoryItem, error)
@@ -25,7 +25,7 @@ type InventoryUsecase interface {
 	UpdateInventoryItem(ctx context.Context, item *entity.InventoryItem) (*entity.InventoryItem, error)
 
 	// AddStock adds stock to an inventory item
-	AddStock(ctx context.Context, sku string, quantity int, referenceID string) (*entity.InventoryItem, error)
+	AddStock(ctx context.Context, productID string, quantity int, referenceID string) (*entity.InventoryItem, error)
 
 	// ReserveStock reserves stock for an order
 	ReserveStock(ctx context.Context, orderID string, items map[string]int) ([]*entity.InventoryReservation, error)
@@ -40,7 +40,7 @@ type InventoryUsecase interface {
 	GetReservationsByOrderID(ctx context.Context, orderID string) ([]*entity.InventoryReservation, error)
 
 	// GetStockTransactionHistory gets the transaction history for a SKU
-	GetStockTransactionHistory(ctx context.Context, sku string, page, pageSize int) ([]*entity.StockTransaction, int, error)
+	GetStockTransactionHistory(ctx context.Context, productID string, page, pageSize int) ([]*entity.StockTransaction, int, error)
 
 	// GetLowStockItems gets items with stock below reorder level
 	GetLowStockItems(ctx context.Context, page, pageSize int) ([]*entity.InventoryItem, int, error)
@@ -66,8 +66,8 @@ func NewInventoryUsecase(
 }
 
 // GetInventoryItem retrieves inventory information for a product SKU
-func (iu *inventoryUsecase) GetInventoryItem(ctx context.Context, sku string) (*entity.InventoryItem, error) {
-	item, err := iu.repo.GetInventoryItem(ctx, sku)
+func (iu *inventoryUsecase) GetInventoryItem(ctx context.Context, productID string) (*entity.InventoryItem, error) {
+	item, err := iu.repo.GetInventoryItem(ctx, productID)
 	if err != nil {
 		return nil, iu.errBuilder.Err(err)
 	}
@@ -79,7 +79,7 @@ func (iu *inventoryUsecase) CreateInventoryItem(ctx context.Context, item *entit
 	// Set current time
 	item.UpdatedAt = time.Now()
 	// check if SKU is already in use
-	if _, err := iu.repo.GetInventoryItem(ctx, item.SKU); err == nil {
+	if _, err := iu.repo.GetInventoryItem(ctx, item.ProductID); err == nil {
 		return nil, iu.errBuilder.Err(entity.ErrSKUAlreadyExists)
 	}
 	// Create inventory item
@@ -92,7 +92,7 @@ func (iu *inventoryUsecase) CreateInventoryItem(ctx context.Context, item *entit
 	if item.AvailableQty > 0 {
 		transaction := &entity.StockTransaction{
 			TransactionID: uuid.New().String(),
-			SKU:           item.SKU,
+			ProductID:     item.ProductID,
 			Type:          valueobject.StockTypeReleased.String(),
 			Qty:           item.AvailableQty,
 			OccurredAt:    time.Now(),
@@ -125,7 +125,7 @@ func (iu *inventoryUsecase) CreateInventoryItem(ctx context.Context, item *entit
 // UpdateInventoryItem updates an existing inventory item
 func (iu *inventoryUsecase) UpdateInventoryItem(ctx context.Context, item *entity.InventoryItem) (*entity.InventoryItem, error) {
 	// Ensure the item exists
-	existingItem, err := iu.repo.GetInventoryItem(ctx, item.SKU)
+	existingItem, err := iu.repo.GetInventoryItem(ctx, item.ProductID)
 	if err != nil {
 		return nil, iu.errBuilder.Err(entity.ErrInventoryNotFound)
 	}
@@ -157,7 +157,7 @@ func (iu *inventoryUsecase) UpdateInventoryItem(ctx context.Context, item *entit
 
 		transaction := &entity.StockTransaction{
 			TransactionID: uuid.New().String(),
-			SKU:           item.SKU,
+			ProductID:     item.ProductID,
 			Type:          transactionType,
 			Qty:           diff,
 			OccurredAt:    time.Now(),
@@ -195,13 +195,13 @@ func (iu *inventoryUsecase) UpdateInventoryItem(ctx context.Context, item *entit
 }
 
 // AddStock adds stock to an inventory item
-func (iu *inventoryUsecase) AddStock(ctx context.Context, sku string, quantity int, referenceID string) (*entity.InventoryItem, error) {
+func (iu *inventoryUsecase) AddStock(ctx context.Context, productID string, quantity int, referenceID string) (*entity.InventoryItem, error) {
 	if quantity <= 0 {
 		return nil, iu.errBuilder.Err(entity.ErrInvalidProductData)
 	}
 
 	// Get the current inventory item
-	item, err := iu.repo.GetInventoryItem(ctx, sku)
+	item, err := iu.repo.GetInventoryItem(ctx, productID)
 	if err != nil {
 		return nil, iu.errBuilder.Err(err)
 	}
@@ -224,7 +224,7 @@ func (iu *inventoryUsecase) AddStock(ctx context.Context, sku string, quantity i
 
 	transaction := &entity.StockTransaction{
 		TransactionID: uuid.New().String(),
-		SKU:           sku,
+		ProductID:     productID,
 		Type:          valueobject.StockTypeReleased.String(),
 		Qty:           quantity,
 		OccurredAt:    time.Now(),
@@ -251,9 +251,9 @@ func (iu *inventoryUsecase) ReserveStock(ctx context.Context, orderID string, it
 	reservations := make([]*entity.InventoryReservation, 0, len(items))
 
 	// First check if all items have sufficient stock
-	for sku, qty := range items {
+	for productID, qty := range items {
 		// Get inventory item
-		inventoryItem, err := iu.repo.GetInventoryItem(ctx, sku)
+		inventoryItem, err := iu.repo.GetInventoryItem(ctx, productID)
 		if err != nil {
 			return nil, iu.errBuilder.Err(err)
 		}
@@ -261,15 +261,15 @@ func (iu *inventoryUsecase) ReserveStock(ctx context.Context, orderID string, it
 		// Check if there's enough available stock
 		if inventoryItem.AvailableQty < qty {
 			// Publish reservation failed event
-			iu.eventPub.PublishStockReservationFailed(ctx, orderID, sku, "Insufficient stock")
+			iu.eventPub.PublishStockReservationFailed(ctx, orderID, productID, "Insufficient stock")
 			return nil, iu.errBuilder.Err(entity.ErrInsufficientStock)
 		}
 	}
 
 	// Now we know we have enough stock for all items, proceed with reservations
-	for sku, qty := range items {
+	for productID, qty := range items {
 		// Get inventory item
-		inventoryItem, err := iu.repo.GetInventoryItem(ctx, sku)
+		inventoryItem, err := iu.repo.GetInventoryItem(ctx, productID)
 		if err != nil {
 			// Should not happen as we already checked
 			return nil, iu.errBuilder.Err(err)
@@ -279,7 +279,7 @@ func (iu *inventoryUsecase) ReserveStock(ctx context.Context, orderID string, it
 		reservation := &entity.InventoryReservation{
 			ReservationID: uuid.New().String(),
 			OrderID:       orderID,
-			SKU:           sku,
+			ProductID:     productID,
 			Qty:           qty,
 			Status:        valueobject.ReserveStatusReserved.String(),
 			ReservedAt:    time.Now(),
@@ -307,7 +307,7 @@ func (iu *inventoryUsecase) ReserveStock(ctx context.Context, orderID string, it
 		refID := createdReservation.ReservationID
 		transaction := &entity.StockTransaction{
 			TransactionID: uuid.New().String(),
-			SKU:           sku,
+			ProductID:     productID,
 			Type:          valueobject.StockTypeReserved.String(),
 			Qty:           qty,
 			OccurredAt:    time.Now(),
@@ -359,7 +359,7 @@ func (iu *inventoryUsecase) CompleteReservation(ctx context.Context, orderID str
 		}
 
 		// Get inventory item
-		inventoryItem, err := iu.repo.GetInventoryItem(ctx, reservation.SKU)
+		inventoryItem, err := iu.repo.GetInventoryItem(ctx, reservation.ProductID)
 		if err != nil {
 			return iu.errBuilder.Err(err)
 		}
@@ -385,7 +385,7 @@ func (iu *inventoryUsecase) CompleteReservation(ctx context.Context, orderID str
 		refID := reservation.ReservationID
 		transaction := &entity.StockTransaction{
 			TransactionID: uuid.New().String(),
-			SKU:           reservation.SKU,
+			ProductID:     reservation.ProductID,
 			Type:          valueobject.StockTypeDeducted.String(),
 			Qty:           reservation.Qty,
 			OccurredAt:    time.Now(),
@@ -427,7 +427,7 @@ func (iu *inventoryUsecase) CancelReservation(ctx context.Context, orderID strin
 		}
 
 		// Get inventory item
-		inventoryItem, err := iu.repo.GetInventoryItem(ctx, reservation.SKU)
+		inventoryItem, err := iu.repo.GetInventoryItem(ctx, reservation.ProductID)
 		if err != nil {
 			return iu.errBuilder.Err(err)
 		}
@@ -453,7 +453,7 @@ func (iu *inventoryUsecase) CancelReservation(ctx context.Context, orderID strin
 		refID := reservation.ReservationID
 		transaction := &entity.StockTransaction{
 			TransactionID: uuid.New().String(),
-			SKU:           reservation.SKU,
+			ProductID:     reservation.ProductID,
 			Type:          valueobject.StockTypeReleased.String(),
 			Qty:           reservation.Qty,
 			OccurredAt:    time.Now(),
@@ -486,9 +486,9 @@ func (iu *inventoryUsecase) GetReservationsByOrderID(ctx context.Context, orderI
 }
 
 // GetStockTransactionHistory gets the transaction history for a SKU
-func (iu *inventoryUsecase) GetStockTransactionHistory(ctx context.Context, sku string, page, pageSize int) ([]*entity.StockTransaction, int, error) {
+func (iu *inventoryUsecase) GetStockTransactionHistory(ctx context.Context, productID string, page, pageSize int) ([]*entity.StockTransaction, int, error) {
 	offset := (page - 1) * pageSize
-	transactions, total, err := iu.repo.GetStockTransactions(ctx, sku, pageSize, offset)
+	transactions, total, err := iu.repo.GetStockTransactions(ctx, productID, pageSize, offset)
 	if err != nil {
 		return nil, 0, iu.errBuilder.Err(err)
 	}

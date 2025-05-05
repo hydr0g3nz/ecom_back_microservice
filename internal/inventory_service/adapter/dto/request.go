@@ -9,7 +9,7 @@ import (
 
 // CreateInventoryItemRequest represents the request body for creating an inventory item
 type CreateInventoryItemRequest struct {
-	SKU          string `json:"sku" validate:"required"`
+	ProductID    string `json:"product_id" validate:"required"`
 	Name         string `json:"name" validate:"required"`
 	Description  string `json:"description"`
 	AvailableQty int    `json:"available_qty" validate:"min=0"`
@@ -21,7 +21,7 @@ type CreateInventoryItemRequest struct {
 // ToEntity converts the request DTO to an InventoryItem entity
 func (d *CreateInventoryItemRequest) ToEntity() entity.InventoryItem {
 	return entity.InventoryItem{
-		SKU:          d.SKU,
+		ProductID:    d.ProductID,
 		AvailableQty: d.AvailableQty,
 		ReservedQty:  d.ReservedQty,
 		SoldQty:      d.SoldQty,
@@ -38,14 +38,14 @@ type UpdateInventoryItemRequest struct {
 	ReservedQty  int    `json:"reserved_qty" validate:"min=0"`
 	SoldQty      int    `json:"sold_qty" validate:"min=0"`
 	ReorderLevel int    `json:"reorder_level" validate:"min=0"`
-	// Note: SKU is expected from path parameter for update
+	// Note: ProductID is expected from path parameter for update
 }
 
 // ToEntity converts the request DTO to an InventoryItem entity (for update)
-// It requires the existing SKU to be set
+// It requires the existing ProductID to be set
 func (d *UpdateInventoryItemRequest) ToEntity(sku string) entity.InventoryItem {
 	return entity.InventoryItem{
-		SKU:          sku, // Use SKU from path param
+		ProductID:    sku, // Use ProductID from path param
 		AvailableQty: d.AvailableQty,
 		ReservedQty:  d.ReservedQty,
 		SoldQty:      d.SoldQty,
