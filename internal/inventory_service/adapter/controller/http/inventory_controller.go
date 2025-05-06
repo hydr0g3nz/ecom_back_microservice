@@ -35,6 +35,7 @@ func (h *InventoryHandler) RegisterRoutes(r fiber.Router) {
 	inventoryGroup := r.Group("/inventory")
 
 	inventoryGroup.Post("/", h.CreateInventoryItem)
+	inventoryGroup.Get("/low-stock", h.GetLowStockItems)
 	inventoryGroup.Get("/:sku", h.GetInventoryItem)
 	inventoryGroup.Put("/:sku", h.UpdateInventoryItem)
 	inventoryGroup.Post("/:sku/stock/add", h.AddStock) // e.g., /inventory/SKU123/stock/add
@@ -43,7 +44,6 @@ func (h *InventoryHandler) RegisterRoutes(r fiber.Router) {
 	inventoryGroup.Post("/:orderID/cancel", h.CancelReservation)             // e.g., /inventory/ORDERID456/cancel
 	inventoryGroup.Get("/reservations/:orderID", h.GetReservationsByOrderID) // e.g., /inventory/reservations/ORDERID456
 	inventoryGroup.Get("/:sku/transactions", h.GetStockTransactionHistory)   // e.g., /inventory/SKU123/transactions
-	inventoryGroup.Get("/low-stock", h.GetLowStockItems)
 }
 
 // updateHandleError should be a shared helper function or extended

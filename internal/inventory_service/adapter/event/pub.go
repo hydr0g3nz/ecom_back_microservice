@@ -139,26 +139,7 @@ func (k *KafkaEventPublisher) PublishStockReleased(ctx context.Context, reservat
 			"reservation": reservation,
 		},
 	}
-
-	// Publish to inventory topic
-	if err := k.serializeAndPublish(ctx, payload, false); err != nil {
-		return err
-	}
-
-	// Also publish order cancellation event
-	orderPayload := StockEventPayload{
-		EventType:     service.EventTypeOrderReservationCanceled,
-		Timestamp:     time.Now(),
-		SKU:           reservation.ProductID,
-		OrderID:       reservation.OrderID,
-		Quantity:      reservation.Qty,
-		ReservationID: reservation.ReservationID,
-		Data: map[string]interface{}{
-			"reservation": reservation,
-		},
-	}
-
-	return k.serializeAndPublish(ctx, orderPayload, false)
+	return k.serializeAndPublish(ctx, payload, false)
 }
 
 // PublishStockDeducted publishes an event that stock has been deducted
