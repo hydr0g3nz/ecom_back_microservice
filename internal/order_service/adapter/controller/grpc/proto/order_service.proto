@@ -1,0 +1,132 @@
+// internal/order_service/adapter/controller/grpc/proto/order_service.proto
+syntax = "proto3";
+
+package order;
+
+option go_package = "github.com/hydr0g3nz/ecom_back_microservice/internal/order_service/adapter/controller/grpc/proto";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+service OrderService {
+  // Order operations
+  rpc CreateOrder(CreateOrderRequest) returns (OrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (OrderResponse);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc UpdateOrder(UpdateOrderRequest) returns (OrderResponse);
+  rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (OrderResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (OrderResponse);
+  rpc GetOrdersByUser(GetOrdersByUserRequest) returns (ListOrdersResponse);
+}
+
+// Address message for both shipping and billing
+message Address {
+  string street = 1;
+  string city = 2;
+  string state = 3;
+  string country = 4;
+  string postal_code = 5;
+}
+
+// Order item message
+message OrderItem {
+  string product_id = 1;
+  string product_name = 2;
+  int32 quantity = 3;
+  double price = 4;
+  double subtotal = 5;
+}
+
+// Payment message
+message Payment {
+  string method = 1;
+  double amount = 2;
+  optional string transaction_id = 3;
+  optional string status = 4;
+  optional google.protobuf.Timestamp paid_at = 5;
+}
+
+// Status history item message
+message StatusHistoryItem {
+  string status = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string comment = 3;
+}
+
+// CreateOrderRequest message
+message CreateOrderRequest {
+  string user_id = 1;
+  repeated OrderItem items = 2;
+  Address shipping_info = 3;
+  Address billing_info = 4;
+  Payment payment = 5;
+  optional string notes = 6;
+}
+
+// GetOrderRequest message
+message GetOrderRequest {
+  string id = 1;
+}
+
+// ListOrdersRequest message
+message ListOrdersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  map<string, string> filters = 3;
+}
+
+// UpdateOrderRequest message
+message UpdateOrderRequest {
+  string id = 1;
+  string user_id = 2;
+  repeated OrderItem items = 3;
+  Address shipping_info = 4;
+  Address billing_info = 5;
+  Payment payment = 6;
+  optional string notes = 7;
+}
+
+// UpdateOrderStatusRequest message
+message UpdateOrderStatusRequest {
+  string id = 1;
+  string status = 2;
+  string comment = 3;
+}
+
+// CancelOrderRequest message
+message CancelOrderRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+// GetOrdersByUserRequest message
+message GetOrdersByUserRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+// OrderResponse message
+message OrderResponse {
+  string id = 1;
+  string user_id = 2;
+  repeated OrderItem items = 3;
+  double total_amount = 4;
+  string status = 5;
+  Address shipping_info = 6;
+  Address billing_info = 7;
+  Payment payment = 8;
+  string notes = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  repeated StatusHistoryItem status_history = 12;
+}
+
+// ListOrdersResponse message
+message ListOrdersResponse {
+  int32 total = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  int32 total_pages = 4;
+  repeated OrderResponse orders = 5;
+}
