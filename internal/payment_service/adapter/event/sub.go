@@ -127,7 +127,7 @@ func (k *KafkaEventSubscriber) SubscribeToOrderEvents(ctx context.Context) error
 
 // processOrderMessage processes messages from the order topic
 func (k *KafkaEventSubscriber) processOrderMessage(ctx context.Context, msg []byte) error {
-	var payload map[string]any
+	var payload map[string]interface{}
 	if err := json.Unmarshal(msg, &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal message: %w", err)
 	}
